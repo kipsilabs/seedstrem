@@ -93,7 +93,7 @@ export function Prowlarr({ config, update }: SectionProps) {
         onChange={(v) => update((c) => (c.prowlarr.search_timeout_seconds = v))}
       />
 
-      <div className="form-control">
+      <div className="flex flex-col gap-1">
         <span className="label-text">Search indexers</span>
         <p className="mt-1 text-sm opacity-70">
           Restrict searches to specific indexers. Leave all unchecked to search every indexer.
@@ -107,7 +107,7 @@ export function Prowlarr({ config, update }: SectionProps) {
         {indexers && indexers.length > 0 && (
           <div className="mt-3 grid grid-cols-2 gap-1 sm:grid-cols-3">
             {indexers.map((ix) => (
-              <label key={ix.id} className="label cursor-pointer justify-start gap-2">
+              <label key={ix.id} className="flex cursor-pointer items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   className="checkbox checkbox-sm"

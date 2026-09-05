@@ -14,18 +14,18 @@ export function PathMappings({ config, update }: SectionProps) {
     >
       {config.paths.mappings.map((m, i) => (
         <div className="flex items-end gap-2" key={i}>
-          <label className="form-control flex-1">
+          <label className="flex flex-1 flex-col gap-1">
             <span className="label-text mb-1">Remote path</span>
             <input
-              className="input input-bordered"
+              className="input input-bordered w-full"
               value={m.remote}
               onChange={(e) => update((c) => (c.paths.mappings[i].remote = e.target.value))}
             />
           </label>
-          <label className="form-control flex-1">
+          <label className="flex flex-1 flex-col gap-1">
             <span className="label-text mb-1">Local path</span>
             <input
-              className="input input-bordered"
+              className="input input-bordered w-full"
               value={m.local}
               onChange={(e) => update((c) => (c.paths.mappings[i].local = e.target.value))}
             />

@@ -14,7 +14,7 @@ export interface StatusPresentation {
 const PRESENTATION: Record<string, StatusPresentation> = {
   magnet_conversion: { label: "Resolving", icon: "◌", badgeClass: "badge-info", tone: "info" },
   waiting_files_selection: { label: "Waiting selection", icon: "◔", badgeClass: "badge-warning", tone: "warning" },
-  queued: { label: "Queued", icon: "▪", badgeClass: "badge-neutral", tone: "neutral" },
+  queued: { label: "Queued", icon: "▪", badgeClass: "badge-ghost", tone: "neutral" },
   downloading: { label: "Downloading", icon: "⇩", badgeClass: "badge-primary", tone: "primary" },
   downloaded: { label: "Downloaded", icon: "✓", badgeClass: "badge-success", tone: "success" },
   error: { label: "Error", icon: "✕", badgeClass: "badge-error", tone: "error" },

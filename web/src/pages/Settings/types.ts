@@ -1,4 +1,5 @@
 import { Config } from "../../api";
+import type { IconName } from "../../components/Icon";
 
 export interface SectionProps {
   config: Config;
@@ -8,7 +9,7 @@ export interface SectionProps {
 export interface SectionDef {
   id: string;
   label: string;
-  icon: string;
+  icon: IconName;
   group: string;
   restart?: boolean;
 }

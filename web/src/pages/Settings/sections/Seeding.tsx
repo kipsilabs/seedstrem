@@ -64,22 +64,22 @@ function IndexerSeedTimes({ config, update }: SectionProps) {
       </span>
       {rows.map((row, i) => (
         <div className="flex items-end gap-2" key={i}>
-          <label className="form-control flex-1">
+          <label className="flex flex-1 flex-col gap-1">
             <span className="label-text mb-1">Indexer</span>
             <input
-              className="input input-bordered"
+              className="input input-bordered w-full"
               value={row.indexer}
               onChange={(e) =>
                 update((c) => (c.cleanup.indexer_seed_times[i].indexer = e.target.value))
               }
             />
           </label>
-          <label className="form-control w-40">
+          <label className="flex w-40 flex-col gap-1">
             <span className="label-text mb-1">Seed time (hours)</span>
             <input
               type="number"
               min={0}
-              className="input input-bordered"
+              className="input input-bordered w-full"
               value={row.seed_time_hours}
               onChange={(e) =>
                 update(
