@@ -39,7 +39,7 @@ fetched when you press play. Seeding stays entirely in the client.
 ## Quick start
 
 ```bash
-curl -LO https://raw.githubusercontent.com/javi11/seedstrem/main/docker-compose.yml
+curl -LO https://raw.githubusercontent.com/kipsilabs/seedstrem/main/docker-compose.yml
 docker compose up -d
 docker compose logs seedstrem | grep password   # admin_password
 ```
