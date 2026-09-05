@@ -104,17 +104,11 @@ html {
 
 body {
   /* Subtle radial depth so the page never reads as a flat slab. */
-  background-image:
-    radial-gradient(
-      120% 90% at 100% 0%,
-      color-mix(in oklch, var(--color-primary) 12%, transparent) 0%,
-      transparent 55%
-    ),
-    radial-gradient(
-      90% 80% at 0% 100%,
-      color-mix(in oklch, var(--color-accent) 9%, transparent) 0%,
-      transparent 50%
-    );
+  background-image: radial-gradient(
+    120% 90% at 100% 0%,
+    color-mix(in oklch, var(--color-primary) 9%, transparent) 0%,
+    transparent 55%
+  );
   background-attachment: fixed;
 }
 
@@ -136,15 +130,37 @@ h1, h2, h3, .tracking-brand {
   background-clip: content-box;
 }
 
-/* A soft "surface" helper: bordered card with a faint top highlight. */
+/* A "surface" helper: bordered panel with a faint top highlight. Shadows
+   stay minimal so panels read as regions of one page, not floating cards. */
 @utility surface {
   background: var(--color-base-100);
   border: 1px solid color-mix(in oklch, var(--color-base-content) 8%, transparent);
   border-radius: var(--radius-box);
-  box-shadow:
-    0 1px 0 0 color-mix(in oklch, var(--color-base-content) 6%, transparent) inset,
-    0 10px 30px -12px rgb(0 0 0 / 0.45);
+  box-shadow: 0 1px 0 0 color-mix(in oklch, var(--color-base-content) 5%, transparent) inset;
 }
+
+/* The one place the logo's green-to-blue gradient appears in the UI. */
+@utility brand-seam {
+  background: linear-gradient(90deg, var(--color-accent), var(--color-primary));
+}
+
+/* Consistent keyboard focus everywhere, on top of daisyUI's own rings. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Sortable table headers are buttons; keep them looking like headers. */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.th-sort:hover { color: var(--color-base-content); }
 
 /* Live-status pulse dot. */
 @utility pulse-dot {

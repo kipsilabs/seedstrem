@@ -1,4 +1,5 @@
 import { ComponentType, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Icon } from "../../components/Icon";
 import { api, Config } from "../../api";
 import { useToast } from "../../components/Toast";
 import { useNavigationGuard } from "../../components/NavigationGuard";
@@ -18,17 +19,17 @@ import { Storage } from "./sections/Storage";
 import { Streaming } from "./sections/Streaming";
 
 const SECTIONS: SectionDef[] = [
-  { id: "download-client", label: "Download client", icon: "⇩", group: "Connections" },
-  { id: "prowlarr", label: "Prowlarr", icon: "🔎", group: "Connections" },
-  { id: "content-types", label: "Content types", icon: "▶", group: "Addon" },
-  { id: "filters", label: "Result filters", icon: "⛃", group: "Addon" },
-  { id: "metadata", label: "Metadata", icon: "🎬", group: "Addon", restart: true },
-  { id: "seeding", label: "Seeding & cleanup", icon: "♺", group: "System" },
-  { id: "rss", label: "RSS auto-grab", icon: "📡", group: "System" },
-  { id: "storage", label: "Storage & disk", icon: "🗄", group: "System" },
-  { id: "paths", label: "Path mappings", icon: "🗺", group: "System" },
-  { id: "server", label: "Server", icon: "🖥", group: "System", restart: true },
-  { id: "streaming", label: "Streaming", icon: "⇄", group: "System" },
+  { id: "download-client", label: "Download client", icon: "download", group: "Connections" },
+  { id: "prowlarr", label: "Prowlarr", icon: "search", group: "Connections" },
+  { id: "content-types", label: "Content types", icon: "play", group: "Addon" },
+  { id: "filters", label: "Result filters", icon: "filter", group: "Addon" },
+  { id: "metadata", label: "Metadata", icon: "film", group: "Addon", restart: true },
+  { id: "seeding", label: "Seeding & cleanup", icon: "repeat", group: "System" },
+  { id: "rss", label: "RSS auto-grab", icon: "rss", group: "System" },
+  { id: "storage", label: "Storage & disk", icon: "database", group: "System" },
+  { id: "paths", label: "Path mappings", icon: "route", group: "System" },
+  { id: "server", label: "Server", icon: "server", group: "System", restart: true },
+  { id: "streaming", label: "Streaming", icon: "activity", group: "System" },
 ];
 
 const COMPONENTS: Record<string, ComponentType<SectionProps>> = {
@@ -94,10 +95,27 @@ export function Settings() {
 
   const dirty = config !== null && JSON.stringify(config) !== saved;
 
+  const discard = () => {
+    if (saved) setConfig(JSON.parse(saved) as Config);
+  };
+
   // Register the unsaved-changes guard for in-app navigation, plus a native
   // beforeunload prompt for reload/close.
   const dirtyRef = useRef(false);
   dirtyRef.current = dirty;
+
+  // Cmd/Ctrl+S saves, the way every editor does.
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (dirtyRef.current) formRef.current?.requestSubmit();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   useEffect(() => {
     setGuard(() => dirtyRef.current);
     return () => setGuard(null);
@@ -174,17 +192,17 @@ export function Settings() {
         {SECTIONS.map((s) => (
           <option key={s.id} value={s.id}>
             {s.label}
-            {s.restart ? " (restart)" : ""}
+            {s.restart ? " (restart required)" : ""}
           </option>
         ))}
       </select>
 
-      <form onSubmit={save} className="flex gap-6">
+      <form ref={formRef} onSubmit={save} className="flex gap-6">
         {/* Desktop sub-nav */}
         <nav className="surface hidden w-56 shrink-0 self-start p-2 md:block">
           {grouped.map(({ group, items }) => (
             <div key={group} className="mb-2">
-              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider opacity-50">
+              <div className="px-3 py-1.5 text-xs font-medium opacity-50">
                 {group}
               </div>
               {items.map((s) => (
@@ -199,13 +217,11 @@ export function Settings() {
                       : "text-base-content/70 hover:bg-base-300/60",
                   ].join(" ")}
                 >
-                  <span className="w-4 text-center" aria-hidden>
-                    {s.icon}
-                  </span>
+                  <Icon name={s.icon} size={16} className={active === s.id ? "text-primary" : "opacity-70"} />
                   <span className="flex-1 truncate">{s.label}</span>
                   {s.restart && (
-                    <span className="badge badge-warning badge-xs" title="Restart required">
-                      ↻
+                    <span className="text-[11px] text-warning" title="Restart required">
+                      restart
                     </span>
                   )}
                 </button>
@@ -218,6 +234,7 @@ export function Settings() {
         <div className="min-w-0 flex-1">
           {activeDef.restart && (
             <div className="alert alert-warning mb-4 py-2 text-sm">
+              <Icon name="info" size={16} />
               <span>Changes in this section apply only after restarting seedstrem.</span>
             </div>
           )}
@@ -234,9 +251,16 @@ export function Settings() {
                 <span className="opacity-50">All changes saved</span>
               )}
             </span>
-            <button className="btn btn-primary" disabled={saving || !dirty}>
-              {saving ? <span className="loading loading-spinner loading-sm" /> : "Save settings"}
-            </button>
+            <div className="flex items-center gap-2">
+              {dirty && !saving && (
+                <button type="button" className="btn btn-ghost" onClick={discard}>
+                  Discard
+                </button>
+              )}
+              <button className="btn btn-primary" disabled={saving || !dirty}>
+                {saving ? <span className="loading loading-spinner loading-sm" /> : "Save settings"}
+              </button>
+            </div>
           </div>
         </div>
       </form>

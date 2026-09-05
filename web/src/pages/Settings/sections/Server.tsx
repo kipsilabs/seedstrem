@@ -30,10 +30,10 @@ export function Server({ config, update }: SectionProps) {
           value={config.storage.database}
           onChange={(v) => update((c) => (c.storage.database = v))}
         />
-        <label className="form-control">
+        <label className="flex flex-col gap-1">
           <span className="label-text mb-1">Log level (restart required)</span>
           <select
-            className="select select-bordered"
+            className="select select-bordered w-full"
             value={config.log.level}
             onChange={(e) => update((c) => (c.log.level = e.target.value))}
           >

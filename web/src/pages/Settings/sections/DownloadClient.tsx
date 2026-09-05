@@ -41,10 +41,10 @@ export function DownloadClient({ config, update }: SectionProps) {
   return (
     <div className="flex flex-col gap-4">
       <SectionCard title="Download client" description="The torrent client seedstrem drives.">
-        <label className="form-control max-w-xs">
+        <label className="flex max-w-xs flex-col gap-1">
           <span className="label-text mb-1">Client</span>
           <select
-            className="select select-bordered"
+            className="select select-bordered w-full"
             value={config.downloader.type}
             onChange={(e) => {
               setTestResult("");

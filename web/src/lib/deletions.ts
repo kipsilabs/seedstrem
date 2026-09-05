@@ -22,7 +22,7 @@ export function deletionReasonClass(reason: string): string {
     case "ratio":
       return "badge-success";
     case "manual":
-      return "badge-neutral";
+      return "badge-ghost";
     case "abandoned":
       return "badge-warning";
     case "unadopted":

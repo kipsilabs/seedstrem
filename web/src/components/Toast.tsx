@@ -1,3 +1,4 @@
+import { Icon, IconName } from "./Icon";
 import {
   createContext,
   ReactNode,
@@ -24,7 +25,7 @@ interface ToastApi {
 
 const ToastContext = createContext<ToastApi | null>(null);
 
-const ICON: Record<ToastKind, string> = { success: "✓", error: "✕", info: "ⓘ" };
+const ICON: Record<ToastKind, IconName> = { success: "check", error: "alert", info: "info" };
 const ALERT: Record<ToastKind, string> = {
   success: "alert-success",
   error: "alert-error",
@@ -62,17 +63,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className="toast toast-end z-50">
+      <div className="toast toast-end z-50" role="status" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`alert ${ALERT[t.kind]} shadow-lg`}>
-            <span aria-hidden>{ICON[t.kind]}</span>
+            <Icon name={ICON[t.kind]} />
             <span>{t.message}</span>
             <button
-              className="btn btn-ghost btn-xs"
+              className="btn btn-ghost btn-xs btn-square"
               aria-label="Dismiss notification"
               onClick={() => dismiss(t.id)}
             >
-              ✕
+              <Icon name="close" size={14} />
             </button>
           </div>
         ))}
