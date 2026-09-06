@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 func TestDeletionsListing(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/javib/seedstrem/internal/downloader/fake"
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/downloader/fake"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 func TestReconcile(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javib/seedstrem/internal/downloader"
-	"github.com/javib/seedstrem/internal/downloader/fake"
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/downloader/fake"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 func enabled() Settings { return Settings{Enabled: true, Label: "seedstrem"} }

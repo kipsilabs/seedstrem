@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javib/seedstrem/internal/downloader/fake"
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/downloader/fake"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 // Un-adopting drops the store row while the torrent keeps seeding in the

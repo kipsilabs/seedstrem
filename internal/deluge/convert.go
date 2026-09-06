@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/javib/seedstrem/internal/deluge/delugerpc"
-	"github.com/javib/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/deluge/delugerpc"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
 )
 
 // normalizeState maps a Deluge torrent state to the canonical

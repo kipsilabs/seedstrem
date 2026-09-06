@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/javib/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
 )
 
 // ErrWaitTimeout is returned when pieces did not arrive in time.

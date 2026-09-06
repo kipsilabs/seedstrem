@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/javib/seedstrem/internal/prowlarr"
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/prowlarr"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 // playURLIndexer extracts the ix query param from a play URL.

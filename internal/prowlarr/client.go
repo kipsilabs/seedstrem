@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/javib/seedstrem/internal/metainfo"
+	"github.com/kipsilabs/seedstrem/internal/metainfo"
 )
 
 const defaultTimeout = 30 * time.Second

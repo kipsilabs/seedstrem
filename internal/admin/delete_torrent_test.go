@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/javib/seedstrem/internal/downloader/fake"
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/downloader/fake"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 // seedTorrent inserts a torrent into both the store and the fake download

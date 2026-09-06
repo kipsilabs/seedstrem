@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/javib/seedstrem/internal/downloader"
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 // Syncer periodically reconciles store state against qBittorrent.

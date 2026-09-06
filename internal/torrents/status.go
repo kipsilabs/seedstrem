@@ -1,8 +1,8 @@
 package torrents
 
 import (
-	"github.com/javib/seedstrem/internal/downloader"
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 // Lifecycle status values seedstrem reports for a torrent. These mirror

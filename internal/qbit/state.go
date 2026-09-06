@@ -1,6 +1,6 @@
 package qbit
 
-import "github.com/javib/seedstrem/internal/downloader"
+import "github.com/kipsilabs/seedstrem/internal/downloader"
 
 // normalizeState maps a raw qBittorrent WebUI state string to one of the
 // canonical downloader.StateXxx constants. Unknown states fall back to

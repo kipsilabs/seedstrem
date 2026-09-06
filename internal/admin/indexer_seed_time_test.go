@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javib/seedstrem/internal/config"
-	"github.com/javib/seedstrem/internal/downloader/fake"
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/config"
+	"github.com/kipsilabs/seedstrem/internal/downloader/fake"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 func TestConfigDTORoundTripsIndexerSeedTimes(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 func TestCheckAbandonedRecordsDeletion(t *testing.T) {

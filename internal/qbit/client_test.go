@@ -9,7 +9,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	pkgerrors "github.com/pkg/errors"
 
-	"github.com/javib/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
 )
 
 func TestIsNotFound(t *testing.T) {

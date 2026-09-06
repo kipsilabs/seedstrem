@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javib/seedstrem/internal/downloader"
-	"github.com/javib/seedstrem/internal/downloader/fake"
-	"github.com/javib/seedstrem/internal/playsession"
-	"github.com/javib/seedstrem/internal/store"
-	"github.com/javib/seedstrem/internal/torrents"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/downloader/fake"
+	"github.com/kipsilabs/seedstrem/internal/playsession"
+	"github.com/kipsilabs/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/torrents"
 )
 
 func TestEffectiveSeedTime(t *testing.T) {

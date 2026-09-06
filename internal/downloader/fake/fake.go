@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/javib/seedstrem/internal/downloader"
-	"github.com/javib/seedstrem/internal/metainfo"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/metainfo"
 )
 
 // File is one file of a fake torrent.

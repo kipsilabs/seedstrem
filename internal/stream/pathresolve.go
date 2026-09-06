@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/javib/seedstrem/internal/config"
-	"github.com/javib/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/config"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
 )
 
 // Resolver locates a torrent file on the local filesystem, translating

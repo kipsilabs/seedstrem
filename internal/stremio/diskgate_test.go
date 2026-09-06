@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/javib/seedstrem/internal/prowlarr"
+	"github.com/kipsilabs/seedstrem/internal/prowlarr"
 )
 
 func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
