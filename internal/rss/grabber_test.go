@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javib/seedstrem/internal/downloader"
-	"github.com/javib/seedstrem/internal/prowlarr"
-	"github.com/javib/seedstrem/internal/store"
-	"github.com/javib/seedstrem/internal/torrents"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/prowlarr"
+	"github.com/kipsilabs/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/torrents"
 )
 
 func res(hash string, seeders int, size int64, freeleech bool) prowlarr.Result {

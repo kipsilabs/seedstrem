@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"github.com/javib/seedstrem/internal/prowlarr"
+	"github.com/kipsilabs/seedstrem/internal/prowlarr"
 )
 
 // searchCacheMax caps the number of cached search result sets so a burst

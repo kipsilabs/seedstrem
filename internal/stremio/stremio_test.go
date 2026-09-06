@@ -13,11 +13,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/javib/seedstrem/internal/downloader/fake"
-	"github.com/javib/seedstrem/internal/meta"
-	"github.com/javib/seedstrem/internal/prowlarr"
-	"github.com/javib/seedstrem/internal/store"
-	"github.com/javib/seedstrem/internal/torrents"
+	"github.com/kipsilabs/seedstrem/internal/downloader/fake"
+	"github.com/kipsilabs/seedstrem/internal/meta"
+	"github.com/kipsilabs/seedstrem/internal/prowlarr"
+	"github.com/kipsilabs/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/torrents"
 )
 
 const testHash = "0123456789abcdef0123456789abcdef01234567"

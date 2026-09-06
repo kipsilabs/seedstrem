@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/javib/seedstrem/internal/config"
-	"github.com/javib/seedstrem/internal/downloader"
-	"github.com/javib/seedstrem/internal/downloader/fake"
+	"github.com/kipsilabs/seedstrem/internal/config"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/downloader/fake"
 )
 
 func TestRemap(t *testing.T) {

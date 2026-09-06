@@ -13,9 +13,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/javib/seedstrem/internal/meta"
-	"github.com/javib/seedstrem/internal/prowlarr"
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/meta"
+	"github.com/kipsilabs/seedstrem/internal/prowlarr"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 // streamItem is one entry in a Stremio stream response.

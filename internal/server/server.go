@@ -12,7 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/javib/seedstrem/web"
+	"github.com/kipsilabs/seedstrem/web"
 )
 
 // Options carries the sub-routers mounted onto the top-level server.

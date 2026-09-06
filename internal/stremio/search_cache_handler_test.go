@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/javib/seedstrem/internal/meta"
+	"github.com/kipsilabs/seedstrem/internal/meta"
 )
 
 // TestStreamRepeatedRequestServedFromSearchCache asserts that with a

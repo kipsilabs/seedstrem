@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javib/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
 )
 
 // prioSpy records PrioritizePieces calls with a scriptable error.

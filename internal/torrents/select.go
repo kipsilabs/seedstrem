@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/javib/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
 )
 
 // ErrNoFileMatch is returned when no file in a torrent matches the selector.

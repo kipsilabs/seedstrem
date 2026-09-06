@@ -14,7 +14,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
-	"github.com/javib/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
 )
 
 // incompleteExt is appended by qBittorrent when "Append .!qB extension

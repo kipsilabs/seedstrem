@@ -1,4 +1,4 @@
-module github.com/javib/seedstrem
+module github.com/kipsilabs/seedstrem
 
 go 1.25.0
 

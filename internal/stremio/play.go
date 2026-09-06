@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/javib/seedstrem/internal/metainfo"
-	"github.com/javib/seedstrem/internal/torrents"
+	"github.com/kipsilabs/seedstrem/internal/metainfo"
+	"github.com/kipsilabs/seedstrem/internal/torrents"
 )
 
 // play handles GET|HEAD /play/{infohash} — the resolve half. It adds the

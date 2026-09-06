@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/javib/seedstrem/internal/downloader/fake"
-	"github.com/javib/seedstrem/internal/meta"
-	"github.com/javib/seedstrem/internal/prowlarr"
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/downloader/fake"
+	"github.com/kipsilabs/seedstrem/internal/meta"
+	"github.com/kipsilabs/seedstrem/internal/prowlarr"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 func movieQuery() meta.Query { return meta.Query{Source: "tt", ID: "tt1375666"} }

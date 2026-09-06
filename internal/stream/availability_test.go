@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javib/seedstrem/internal/downloader"
-	"github.com/javib/seedstrem/internal/downloader/fake"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/downloader/fake"
 )
 
 const testHash = "0123456789abcdef0123456789abcdef01234567"

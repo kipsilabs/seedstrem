@@ -17,14 +17,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/javib/seedstrem/internal/config"
-	"github.com/javib/seedstrem/internal/deluge"
-	"github.com/javib/seedstrem/internal/diskusage"
-	"github.com/javib/seedstrem/internal/downloader"
-	"github.com/javib/seedstrem/internal/prowlarr"
-	"github.com/javib/seedstrem/internal/qbit"
-	"github.com/javib/seedstrem/internal/store"
-	"github.com/javib/seedstrem/internal/torrents"
+	"github.com/kipsilabs/seedstrem/internal/config"
+	"github.com/kipsilabs/seedstrem/internal/deluge"
+	"github.com/kipsilabs/seedstrem/internal/diskusage"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/prowlarr"
+	"github.com/kipsilabs/seedstrem/internal/qbit"
+	"github.com/kipsilabs/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/torrents"
 )
 
 const passwordMask = "••••••••"

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javib/seedstrem/internal/config"
+	"github.com/kipsilabs/seedstrem/internal/config"
 )
 
 func TestConfigDTORoundTripsRSS(t *testing.T) {

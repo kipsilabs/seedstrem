@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 __plugin_name__ = 'Seedstream'
 __author__ = 'seedstrem'
 __version__ = '1.4'
-__url__ = 'https://github.com/javib/seedstrem'
+__url__ = 'https://github.com/kipsilabs/seedstrem'
 __license__ = 'GPLv3'
 __description__ = 'Piece-deadline streaming primitives for seedstrem (fast seeking).'
 __long_description__ = """Exposes libtorrent set_piece_deadline over the

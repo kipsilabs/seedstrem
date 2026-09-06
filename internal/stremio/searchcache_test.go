@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javib/seedstrem/internal/prowlarr"
+	"github.com/kipsilabs/seedstrem/internal/prowlarr"
 )
 
 func fakeSearch(counter *atomic.Int64, results []prowlarr.Result, err error) func() ([]prowlarr.Result, error) {

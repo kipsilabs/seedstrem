@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/javib/seedstrem/internal/downloader"
-	"github.com/javib/seedstrem/internal/metainfo"
-	"github.com/javib/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/metainfo"
+	"github.com/kipsilabs/seedstrem/internal/store"
 )
 
 // metaPollInterval is how often WaitForMetadata re-checks qBittorrent for a

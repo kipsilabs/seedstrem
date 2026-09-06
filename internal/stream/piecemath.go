@@ -6,7 +6,7 @@ package stream
 import (
 	"sort"
 
-	"github.com/javib/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
 )
 
 // FileOffset returns the absolute byte offset of the file with the

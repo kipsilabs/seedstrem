@@ -9,8 +9,8 @@ import (
 
 	"github.com/gdm85/go-rencode"
 
-	"github.com/javib/seedstrem/internal/deluge/delugerpc"
-	"github.com/javib/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/deluge/delugerpc"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
 )
 
 // pluginAPI extends fakeAPI with scriptable RPC responses.

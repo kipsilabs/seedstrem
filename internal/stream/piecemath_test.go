@@ -3,7 +3,7 @@ package stream
 import (
 	"testing"
 
-	"github.com/javib/seedstrem/internal/downloader"
+	"github.com/kipsilabs/seedstrem/internal/downloader"
 )
 
 func TestFileOffset(t *testing.T) {
