@@ -649,3 +649,33 @@ func TestHeartbeatQuietWhenReaderNotBlocked(t *testing.T) {
 		}
 	}
 }
+
+func TestGateKicksPickerWhenHeadStuckInFlight(t *testing.T) {
+	// The head piece was handed to a dead peer: it stays "downloading"
+	// while the rest of the torrent completes, and the backend has no
+	// piece deadlines (qBittorrent). The gate must reset the piece picker
+	// (sequential off→on) instead of waiting out the grace, and the reset
+	// is what lets the head arrive.
+	e := newStreamEnv(t, []int{1, 2, 2, 2}, 0)
+	kickCall := fmt.Sprintf("setSequentialDownload hash=%s on=false", testHash)
+	var kickedAt time.Duration
+	start := time.Unix(1000, 0)
+	fakeClock(e, func() {
+		for _, c := range e.fake.Calls() {
+			if c == kickCall {
+				if kickedAt == 0 {
+					kickedAt = e.avail.now().Sub(start)
+				}
+				e.fake.Update(testHash, func(tor *fake.Torrent) { tor.PieceStates[0] = 2 })
+			}
+		}
+	})
+
+	w := e.get(t, "")
+	if !bytes.Equal(w.Body.Bytes(), e.content) {
+		t.Fatalf("body = %d bytes, want the real stream after the picker kick; calls=%v", w.Body.Len(), e.fake.Calls())
+	}
+	if kickedAt == 0 || kickedAt >= readyGrace {
+		t.Errorf("picker kicked at %v, want after headKickAfter and well inside the %v grace", kickedAt, readyGrace)
+	}
+}

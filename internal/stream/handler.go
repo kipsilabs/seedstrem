@@ -178,7 +178,16 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		grace = 0 // answer probes instantly with the current state
 	}
 	if !h.waitStreamReady(ctx, tor.Hash, headFirst, headLast, tailFirst, tailLast, grace) {
+		// Neither outcome below is a viewer abandoning playback: keep the
+		// torrent out of the abandoned-download cleanup.
 		servedPlaceholder = true
+		if ctx.Err() != nil {
+			// The player hung up mid-gate (typically its own header
+			// timeout) and will retry; a placeholder written now reaches
+			// nobody.
+			h.logger.Debug("stream: client gone before stream was ready", "hash", tor.Hash, "error", ctx.Err())
+			return
+		}
 		// The piece states behind the decision, not just the piece
 		// numbers: "downloading" means the swarm was serving them and the
 		// grace was too short, "missing" means the window never reached
@@ -277,6 +286,12 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 // request timeout turns the wait into a hard error.
 const readyGrace = 12 * time.Second
 
+// headKickAfter is how long the gate waits on the head pieces before
+// resetting the piece picker on backends without piece deadlines: well
+// inside the ~15s players allow for response headers, late enough that a
+// healthy swarm has normally delivered the head already.
+const headKickAfter = 4 * time.Second
+
 // readyGraceExtension / readyGraceMax extend the gate while the awaited
 // pieces are already in flight.
 const (
@@ -317,6 +332,9 @@ func (h *Handler) waitStreamReady(ctx context.Context, hash string, headFirst, h
 	for slice := grace; ; slice = readyGraceExtension {
 		if h.waitHeadAndTail(ctx, hash, headFirst, headLast, tailFirst, tailLast, slice) {
 			return true
+		}
+		if ctx.Err() != nil {
+			return false // client gone: nothing left to wait for
 		}
 		spent += slice
 		if spent+readyGraceExtension > readyGraceMax {
@@ -363,12 +381,28 @@ func (h *Handler) waitHeadAndTail(ctx context.Context, hash string, headFirst, h
 	}
 	var wg sync.WaitGroup
 	var errs [2]error
+	start := h.avail.now()
 	for i, rng := range ranges {
 		wg.Add(1)
 		go func(i, first, last int, min downloader.PieceState) {
 			defer wg.Done()
 			errs[i] = h.avail.WaitForRangeAtLeast(ctx, hash, first, last, min, grace, prioRefreshInterval, func() bool {
-				return h.prio.request(ctx, hash, first, last)
+				if h.prio.request(ctx, hash, first, last) {
+					return true
+				}
+				// No deadline-capable backend (qBittorrent): a head piece
+				// handed to a dead or crawling peer stays "downloading"
+				// indefinitely while the rest of the torrent races ahead,
+				// and players give up on response headers within ~15s.
+				// Reset the picker so the piece is re-requested from
+				// healthy peers — the heartbeat does the same, but only
+				// once this gate has opened.
+				if i == 0 && h.avail.now().Sub(start) >= headKickAfter && h.svc != nil &&
+					h.svc.KickStreamingPrioThrottled(ctx, hash) {
+					h.logger.Info("stream: head pieces not arriving, kicking piece picker",
+						"hash", hash, "headPieces", [2]int{first, last}, "waited", h.avail.now().Sub(start).Round(time.Millisecond))
+				}
+				return false
 			})
 		}(i, rng.first, rng.last, rng.min)
 	}
