@@ -15,6 +15,7 @@ import (
 
 	"github.com/kipsilabs/seedstrem/internal/downloader/fake"
 	"github.com/kipsilabs/seedstrem/internal/meta"
+	"github.com/kipsilabs/seedstrem/internal/metainfo"
 	"github.com/kipsilabs/seedstrem/internal/prowlarr"
 	"github.com/kipsilabs/seedstrem/internal/store"
 	"github.com/kipsilabs/seedstrem/internal/torrents"
@@ -961,5 +962,58 @@ func TestPlayRejectsMismatchedMagnet(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+// TestPlayFetchesDeferredTorrent asserts that playing a tracker-less magnet
+// whose .torrent fetch was deferred from search downloads that .torrent,
+// adds it directly, and persists a magnet carrying its trackers.
+func TestPlayFetchesDeferredTorrent(t *testing.T) {
+	h := newHarness(t)
+
+	const tracker = "http://tr.example/announce"
+	raw := []byte("d8:announce26:" + tracker + "4:infod4:name4:testee")
+	hash, _, _, err := metainfo.FromTorrent(raw)
+	if err != nil {
+		t.Fatalf("fixture torrent: %v", err)
+	}
+	torrentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(raw)
+	}))
+	defer torrentSrv.Close()
+	h.handler.downloadURLs.put(hash, []byte(torrentSrv.URL+"/file.torrent"))
+	h.fakeDC.Put(&fake.Torrent{
+		Hash: hash, State: "Paused",
+		Files: []fake.File{{Name: "test.mkv", Size: 1 << 20}},
+	})
+
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	bare := "magnet:?xt=urn:btih:" + hash + "&dn=test"
+	resp, err := client.Get(h.server.URL + "/stremio/play/" + hash + "?magnet=" + url.QueryEscape(bare))
+	if err != nil {
+		t.Fatalf("play: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("status = %d, want 302", resp.StatusCode)
+	}
+
+	var addedFile bool
+	for _, c := range h.fakeDC.Calls() {
+		if strings.HasPrefix(c, "add torrentfile="+hash) {
+			addedFile = true
+		}
+	}
+	if !addedFile {
+		t.Errorf("deferred .torrent not added directly: %v", h.fakeDC.Calls())
+	}
+	tor, err := h.db.TorrentByHash(context.Background(), hash)
+	if err != nil {
+		t.Fatalf("stored torrent: %v", err)
+	}
+	if !strings.Contains(tor.Magnet, "tr="+url.QueryEscape(tracker)) {
+		t.Errorf("stored magnet lacks the fetched tracker: %q", tor.Magnet)
 	}
 }

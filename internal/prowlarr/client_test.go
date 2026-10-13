@@ -455,3 +455,43 @@ func indexerTitles(results []Result) []string {
 	sort.Strings(out)
 	return out
 }
+
+// TestSearchDefersTorrentFetchForTrackerlessHash asserts that a release
+// carrying an infoHash but no magnet (so no trackers) is not fetched during
+// search — indexers rate-limit .torrent downloads — and instead exposes its
+// download link for a play-time fetch.
+func TestSearchDefersTorrentFetchForTrackerlessHash(t *testing.T) {
+	var fetches int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[{"title":"Hash Only","infoHash":"` + strings.ToUpper(hexHash) + `","downloadUrl":"http://` + r.Host + `/file.torrent","size":30,"seeders":3,"protocol":"torrent"}]`))
+	})
+	mux.HandleFunc("/file.torrent", func(w http.ResponseWriter, r *http.Request) {
+		fetches++
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := NewWithClient(srv.URL, "my-key", srv.Client())
+	results, err := c.Search(context.Background(), "q", "", nil, nil)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if fetches != 0 {
+		t.Errorf("search fetched the .torrent %d times, want 0 (deferred)", fetches)
+	}
+	if len(results) != 1 {
+		t.Fatalf("want 1 result, got %d: %+v", len(results), results)
+	}
+	r := results[0]
+	if r.InfoHash != hexHash {
+		t.Errorf("infohash = %q, want %q", r.InfoHash, hexHash)
+	}
+	if MagnetHasTrackers(r.MagnetURL) {
+		t.Errorf("magnet unexpectedly has trackers: %q", r.MagnetURL)
+	}
+	if r.DownloadURL != srv.URL+"/file.torrent" {
+		t.Errorf("DownloadURL = %q, want the deferred .torrent link", r.DownloadURL)
+	}
+}

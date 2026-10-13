@@ -220,6 +220,12 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		if len(res.TorrentFile) > 0 {
 			h.torrentFiles.put(res.InfoHash, res.TorrentFile)
 		}
+		// Likewise the deferred .torrent link of a tracker-less release,
+		// so play can fetch it (the link embeds the Prowlarr API key and
+		// must not go into the client-visible play URL).
+		if res.DownloadURL != "" {
+			h.downloadURLs.put(res.InfoHash, []byte(res.DownloadURL))
+		}
 		items = append(items, h.toStreamItem(s.ExternalURL, q, res, progress[res.InfoHash]))
 	}
 	writeJSON(w, http.StatusOK, streamResponse{Streams: items})

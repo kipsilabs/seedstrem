@@ -84,6 +84,9 @@ type Handler struct {
 	indexerCacheAt time.Time
 
 	torrentFiles *torrentFileCache
+	// downloadURLs maps an infohash to its deferred Prowlarr .torrent link
+	// (bytes of the URL), fetched only at play time; see prowlarr.Result.
+	downloadURLs *torrentFileCache
 	searchCache  *searchCache
 
 	// diskUsage reports (used, total) bytes for a local path. Injectable
@@ -97,7 +100,7 @@ func New(svc *torrents.Service, m *meta.Client, settings func() Settings, versio
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Handler{svc: svc, meta: m, settings: settings, version: version, logger: logger, torrentFiles: newTorrentFileCache(), searchCache: newSearchCache(), diskUsage: diskusage.Stat}
+	return &Handler{svc: svc, meta: m, settings: settings, version: version, logger: logger, torrentFiles: newTorrentFileCache(), downloadURLs: newTorrentFileCache(), searchCache: newSearchCache(), diskUsage: diskusage.Stat}
 }
 
 // Router returns the chi router for mounting at /stremio.

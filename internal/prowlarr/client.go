@@ -33,6 +33,11 @@ type Result struct {
 	// metadata fetch, which is unreliable for private-tracker peers. Nil
 	// when the release already had a magnet/infohash.
 	TorrentFile []byte
+	// DownloadURL is the Prowlarr .torrent link, set only when the hash is
+	// known but MagnetURL has no trackers and the fetch was deferred to
+	// play time (see Search). It embeds the Prowlarr API key, so it must
+	// stay server-side.
+	DownloadURL string
 	Size        int64
 	Seeders     int
 	Categories  []int
@@ -162,17 +167,24 @@ func (c *Client) Search(ctx context.Context, query, searchType string, categorie
 			// infoHash and only publish a .torrent download link. Fetch it
 			// and derive the hash ourselves rather than dropping the
 			// release outright.
-			if hash, name, trackers, raw, err := c.fetchTorrentHash(ctx, r.DownloadURL); err == nil {
+			if hash, name, trackers, raw, err := c.FetchTorrent(ctx, r.DownloadURL); err == nil {
 				res.InfoHash = hash
 				if res.Title == "" {
 					res.Title = name
 				}
-				res.MagnetURL = synthesizeMagnet(hash, res.Title, trackers)
+				res.MagnetURL = SynthesizeMagnet(hash, res.Title, trackers)
 				// Keep the raw .torrent so the play flow can add it
 				// directly (skipping qBittorrent's unreliable metadata
 				// fetch); the magnet above is the fallback.
 				res.TorrentFile = raw
 			}
+		} else if !MagnetHasTrackers(res.MagnetURL) && r.DownloadURL != "" {
+			// The hash is known but the magnet carries no trackers
+			// (infoHash-only releases, typical of private trackers), so it
+			// would find no peers. Defer the .torrent fetch to play time:
+			// indexers rate-limit downloads (~2s each through Prowlarr),
+			// so fetching every result here blows the search budget.
+			res.DownloadURL = r.DownloadURL
 		}
 		if res.MagnetURL == "" {
 			continue // no magnet and no infohash — cannot resolve-on-play
@@ -273,11 +285,11 @@ func (c *Client) SearchEach(ctx context.Context, query, searchType string, categ
 // legitimate .torrent files are a few KB to a few hundred KB at most.
 const maxTorrentFileBytes = 2 << 20 // 2 MiB
 
-// fetchTorrentHash downloads a .torrent file from a Prowlarr-provided
+// FetchTorrent downloads a .torrent file from a Prowlarr-provided
 // download link and extracts its v1 infohash, display name, and announce
 // trackers (needed so the synthesized magnet can find peers on private
 // trackers).
-func (c *Client) fetchTorrentHash(ctx context.Context, downloadURL string) (hash, name string, trackers []string, raw []byte, err error) {
+func (c *Client) FetchTorrent(ctx context.Context, downloadURL string) (hash, name string, trackers []string, raw []byte, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return "", "", nil, nil, fmt.Errorf("prowlarr: build torrent request: %w", err)
@@ -304,11 +316,11 @@ func (c *Client) fetchTorrentHash(ctx context.Context, downloadURL string) (hash
 	return hash, name, trackers, body, nil
 }
 
-// synthesizeMagnet builds a magnet URI from an infohash, optional display
+// SynthesizeMagnet builds a magnet URI from an infohash, optional display
 // name, and optional tracker announce URLs. Trackers matter for private
 // torrents: without a tr= entry qBittorrent has no announce URL and (with
 // DHT/PEX ineffective) finds no peers, so the download stalls at 0%.
-func synthesizeMagnet(hash, title string, trackers []string) string {
+func SynthesizeMagnet(hash, title string, trackers []string) string {
 	if hash == "" {
 		return ""
 	}
@@ -320,6 +332,18 @@ func synthesizeMagnet(hash, title string, trackers []string) string {
 		v.Add("tr", tr)
 	}
 	return "magnet:?xt=urn:btih:" + hash + "&" + v.Encode()
+}
+
+// MagnetHasTrackers reports whether magnet carries at least one tr= entry.
+func MagnetHasTrackers(magnet string) bool {
+	if magnet == "" {
+		return false
+	}
+	u, err := url.Parse(magnet)
+	if err != nil {
+		return false
+	}
+	return u.Query().Get("tr") != ""
 }
 
 // IndexerInfo is a Prowlarr indexer as reported by /api/v1/indexer.
@@ -426,7 +450,7 @@ func normalize(r apiResult) Result {
 	}
 	if res.MagnetURL == "" && res.InfoHash != "" {
 		// infoHash-only result: no .torrent to read trackers from.
-		res.MagnetURL = synthesizeMagnet(res.InfoHash, r.Title, nil)
+		res.MagnetURL = SynthesizeMagnet(res.InfoHash, r.Title, nil)
 	}
 	return res
 }

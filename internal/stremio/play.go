@@ -1,6 +1,7 @@
 package stremio
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/kipsilabs/seedstrem/internal/metainfo"
+	"github.com/kipsilabs/seedstrem/internal/prowlarr"
 	"github.com/kipsilabs/seedstrem/internal/torrents"
 )
 
@@ -54,6 +56,9 @@ func (h *Handler) play(w http.ResponseWriter, r *http.Request) {
 	// stream list, add it directly (skips qBittorrent's metadata fetch);
 	// otherwise fall back to the magnet.
 	torrentFile := h.torrentFiles.get(infohash)
+	if torrentFile == nil && !prowlarr.MagnetHasTrackers(magnet) {
+		magnet, torrentFile = h.fetchDeferredTorrent(ctx, s, infohash, magnet)
+	}
 	link, err := h.svc.Resolve(ctx, magnet, torrentFile, sel)
 	if err != nil {
 		switch {
@@ -73,4 +78,28 @@ func (h *Handler) play(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug("stremio: play resolved",
 		"infohash", infohash, "file", link.Path, "token", link.Token)
 	http.Redirect(w, r, target, http.StatusFound)
+}
+
+// fetchDeferredTorrent downloads the .torrent for a tracker-less release
+// whose fetch was deferred from search (see prowlarr.Result.DownloadURL),
+// returning a magnet that carries its trackers plus the raw bytes to add
+// directly. Without one the bare magnet finds no peers on a private
+// tracker. Best-effort: when no link is known (e.g. after a restart) or
+// the fetch fails, the original magnet is returned unchanged.
+func (h *Handler) fetchDeferredTorrent(ctx context.Context, s Settings, infohash, magnet string) (string, []byte) {
+	u := h.downloadURLs.get(infohash)
+	if u == nil {
+		return magnet, nil
+	}
+	hash, name, trackers, raw, err := h.prowlarr(s).FetchTorrent(ctx, string(u))
+	if err != nil || hash != infohash {
+		h.logger.Warn("stremio: deferred .torrent fetch failed, using bare magnet",
+			"infohash", infohash, "fetched", hash, "error", err)
+		return magnet, nil
+	}
+	if _, dn, err := metainfo.FromMagnet(magnet); err == nil && dn != "" {
+		name = dn
+	}
+	h.torrentFiles.put(infohash, raw)
+	return prowlarr.SynthesizeMagnet(hash, name, trackers), raw
 }
