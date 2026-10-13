@@ -92,7 +92,14 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	endSession := h.sessions.Begin(tor.Hash)
 	defer func() {
 		if endSession() == 0 && !servedPlaceholder {
-			go h.checkAbandoned(tor)
+			// Not right away: players routinely close a connection and
+			// open the next (header read, then a jump to the MKV cues at
+			// the end, then back), and an immediate check removed the
+			// torrent in that gap — its next request re-added it from
+			// scratch. checkAbandoned re-checks for active sessions
+			// atomically, so a viewer who reconnects within the grace
+			// keeps the torrent.
+			time.AfterFunc(abandonGrace, func() { h.checkAbandoned(tor) })
 		}
 	}()
 
@@ -285,6 +292,10 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 // enough that the viewer sees the placeholder before the player's own
 // request timeout turns the wait into a hard error.
 const readyGrace = 12 * time.Second
+
+// abandonGrace is how long after the last playback connection closes
+// before an under-threshold torrent is treated as abandoned (see serve).
+const abandonGrace = 30 * time.Second
 
 // headKickAfter is how long the gate waits on the head pieces before
 // resetting the piece picker on backends without piece deadlines: well
