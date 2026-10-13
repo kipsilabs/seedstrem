@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/kipsilabs/seedstrem/internal/meta"
 	"github.com/kipsilabs/seedstrem/internal/prowlarr"
 )
 
@@ -74,6 +75,26 @@ func (c *searchCache) do(key string, ttl time.Duration, search func() ([]prowlar
 	return v.([]prowlarr.Result), false, nil
 }
 
+// peek returns a copy of the cached results for key without ever
+// searching: ok is false when caching is disabled (ttl <= 0) or the entry
+// is absent or expired.
+func (c *searchCache) peek(key string, ttl time.Duration) ([]prowlarr.Result, bool) {
+	if ttl <= 0 {
+		return nil, false
+	}
+	res, ok := c.get(key, ttl)
+	return slices.Clone(res), ok
+}
+
+// store caches a copy of results under key, unless caching is disabled or
+// results is empty (same rule as do: an empty set is never pinned).
+func (c *searchCache) store(key string, ttl time.Duration, results []prowlarr.Result) {
+	if ttl <= 0 || len(results) == 0 {
+		return
+	}
+	c.put(key, slices.Clone(results))
+}
+
 // get returns the cached results for key, or ok=false if absent or older
 // than ttl. Expired entries are left for put's sweep to reclaim.
 func (c *searchCache) get(key string, ttl time.Duration) ([]prowlarr.Result, bool) {
@@ -119,4 +140,15 @@ func searchCacheKey(prowlarrURL, query, searchType string, categories, indexerID
 	ids := slices.Clone(indexerIDs)
 	slices.Sort(ids)
 	return fmt.Sprintf("%s|%s|%s|%v|%v", prowlarrURL, query, searchType, cats, ids)
+}
+
+// contentCacheKey keys the merged (pre-filter) Prowlarr results of a whole
+// stream request by content identity, so the owned fast path can re-offer
+// a recent search's results without rebuilding the per-search keys (which
+// would need indexer, TMDb and Cinemeta lookups). The "content|" prefix
+// keeps it disjoint from searchCacheKey entries sharing the same cache.
+func contentCacheKey(prowlarrURL string, q meta.Query, indexerIDs []int) string {
+	ids := slices.Clone(indexerIDs)
+	slices.Sort(ids)
+	return fmt.Sprintf("content|%s|%v|%s|%s|%d|%d|%v", prowlarrURL, q.Kind, q.Source, q.ID, q.Season, q.Episode, ids)
 }

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -71,64 +72,29 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	// canceled the request before any streams were returned).
 	owned := h.svc.OwnedForContent(ctx, q.Source, q.ID, q.Season, q.Episode)
 
-	// tt-sourced (IMDb) queries search Prowlarr by id token, split across
-	// indexers by capability (see ttSearch). Anime ids have no
-	// Prowlarr-recognized id token, so those resolve a title and search
-	// by free text across whatever indexers are configured.
 	var results []prowlarr.Result
-	switch {
-	case len(owned) > 0:
+	contentKey := contentCacheKey(s.Prowlarr.URL, q, s.Prowlarr.IndexerIDs)
+	if len(owned) > 0 {
 		// Fast path: we already have this content, so serve the owned
-		// torrents and skip the Prowlarr search altogether.
-		h.logger.Debug("stremio: serving owned content, skipping prowlarr search", "id", id, "owned", len(owned))
-	case q.IsAnime():
-		title, err := h.meta.AnimeTitle(ctx, q.Source, q.ID)
+		// torrents without waiting on Prowlarr. Results from a recent search
+		// for this content (within the search-cache TTL) are still offered
+		// below the owned entries — a memory read, no network. On a miss,
+		// refetch in the background so the next request has them.
+		var hit bool
+		results, hit = h.searchCache.peek(contentKey, s.Prowlarr.SearchCacheTTL)
+		if !hit {
+			h.refreshContentCache(ctx, q, s, contentKey)
+		}
+		h.logger.Debug("stremio: serving owned content, skipping prowlarr search",
+			"id", id, "owned", len(owned), "cached_results", len(results), "cache_hit", hit)
+	} else {
+		results, err = h.searchContent(ctx, q, s)
 		if err != nil {
-			h.logger.Warn("stremio: title resolution failed", "id", id, "error", err)
+			h.logger.Warn("stremio: prowlarr search failed", "id", id, "error", err)
 			writeJSON(w, http.StatusOK, empty)
 			return
 		}
-		query, categories := buildAnimeSearch(q, title, s.Prowlarr)
-		pc := h.prowlarr(s)
-		ids := h.resolveIndexerIDs(ctx, pc, s)
-		h.logger.Debug("stremio: prowlarr search",
-			"query", query, "type", "search", "categories", categories, "indexers", len(ids))
-		results, err = h.searchEach(ctx, pc, s, query, "search", categories, ids)
-		if err != nil {
-			h.logger.Warn("stremio: prowlarr search failed", "query", query, "error", err)
-			writeJSON(w, http.StatusOK, empty)
-			return
-		}
-	default:
-		// The episode-scoped search carries an {Episode} token, which
-		// indexers honor by returning only single-episode releases — full
-		// season packs never come back. A second, season-only search
-		// (Sonarr does the same) surfaces the packs. The two are
-		// independent, so run them concurrently: sequentially they roughly
-		// doubled the response time, which was tripping the caller's fetch
-		// timeout. Dedup later collapses any release both searches returned.
-		var (
-			wg      sync.WaitGroup
-			epRes   []prowlarr.Result
-			epErr   error
-			packRes []prowlarr.Result
-		)
-		wg.Go(func() {
-			epRes, epErr = h.ttSearch(ctx, q, s)
-		})
-		wg.Go(func() {
-			// Best-effort: seasonPacks never returns an error (a failed
-			// season search just yields no packs), so it can't fail the
-			// request; a non-series/movie query yields nil cheaply.
-			packRes = h.seasonPacks(ctx, q, s)
-		})
-		wg.Wait()
-		if epErr != nil {
-			h.logger.Warn("stremio: prowlarr search failed", "id", id, "error", epErr)
-			writeJSON(w, http.StatusOK, empty)
-			return
-		}
-		results = append(epRes, packRes...)
+		h.searchCache.store(contentKey, s.Prowlarr.SearchCacheTTL, results)
 	}
 
 	raw := len(results)
@@ -730,4 +696,85 @@ func humanSize(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.2f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+// backgroundSearchTimeout bounds a detached cache-refresh search (see
+// refreshContentCache), covering the title/TMDb lookups as well as the
+// Prowlarr searches themselves.
+const backgroundSearchTimeout = 60 * time.Second
+
+// searchContent runs the full Prowlarr search for q and returns the merged,
+// unfiltered results.
+//
+// tt-sourced (IMDb) queries search Prowlarr by id token, split across
+// indexers by capability (see ttSearch). Anime ids have no
+// Prowlarr-recognized id token, so those resolve a title and search by
+// free text across whatever indexers are configured.
+func (h *Handler) searchContent(ctx context.Context, q meta.Query, s Settings) ([]prowlarr.Result, error) {
+	if q.IsAnime() {
+		title, err := h.meta.AnimeTitle(ctx, q.Source, q.ID)
+		if err != nil {
+			return nil, fmt.Errorf("title resolution: %w", err)
+		}
+		query, categories := buildAnimeSearch(q, title, s.Prowlarr)
+		pc := h.prowlarr(s)
+		ids := h.resolveIndexerIDs(ctx, pc, s)
+		h.logger.Debug("stremio: prowlarr search",
+			"query", query, "type", "search", "categories", categories, "indexers", len(ids))
+		return h.searchEach(ctx, pc, s, query, "search", categories, ids)
+	}
+
+	// The episode-scoped search carries an {Episode} token, which
+	// indexers honor by returning only single-episode releases — full
+	// season packs never come back. A second, season-only search
+	// (Sonarr does the same) surfaces the packs. The two are
+	// independent, so run them concurrently: sequentially they roughly
+	// doubled the response time, which was tripping the caller's fetch
+	// timeout. Dedup later collapses any release both searches returned.
+	var (
+		wg      sync.WaitGroup
+		epRes   []prowlarr.Result
+		epErr   error
+		packRes []prowlarr.Result
+	)
+	wg.Go(func() {
+		epRes, epErr = h.ttSearch(ctx, q, s)
+	})
+	wg.Go(func() {
+		// Best-effort: seasonPacks never returns an error (a failed
+		// season search just yields no packs), so it can't fail the
+		// request; a non-series/movie query yields nil cheaply.
+		packRes = h.seasonPacks(ctx, q, s)
+	})
+	wg.Wait()
+	if epErr != nil {
+		return nil, epErr
+	}
+	return append(epRes, packRes...), nil
+}
+
+// refreshContentCache searches q in the background and caches the results
+// under key, so a later request on the owned fast path can offer them.
+// The search is detached from the request (which is answered immediately)
+// and collapsed per key, so repeated refreshes run at most one search at a
+// time. A no-op when the search cache is disabled.
+func (h *Handler) refreshContentCache(ctx context.Context, q meta.Query, s Settings, key string) {
+	if s.Prowlarr.SearchCacheTTL <= 0 {
+		return
+	}
+	bctx := context.WithoutCancel(ctx)
+	go func() {
+		_, _, _ = h.searchCache.group.Do(key, func() (any, error) {
+			sctx, cancel := context.WithTimeout(bctx, backgroundSearchTimeout)
+			defer cancel()
+			results, err := h.searchContent(sctx, q, s)
+			if err != nil {
+				h.logger.Debug("stremio: background cache refresh failed", "id", q.ID, "error", err)
+				return nil, nil
+			}
+			h.searchCache.store(key, s.Prowlarr.SearchCacheTTL, results)
+			h.logger.Debug("stremio: background cache refresh", "id", q.ID, "results", len(results))
+			return nil, nil
+		})
+	}()
 }

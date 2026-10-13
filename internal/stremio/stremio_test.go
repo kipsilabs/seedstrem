@@ -36,6 +36,9 @@ type harness struct {
 	cinemeta     *httptest.Server
 	fakeDC       *fake.Server
 	db           *store.Store
+	// searchCacheTTL is read per request, so tests may set it after
+	// newHarness returns. Zero (the default) disables the search cache.
+	searchCacheTTL time.Duration
 }
 
 func newHarness(t *testing.T) *harness {
@@ -99,7 +102,7 @@ func newHarness(t *testing.T) *harness {
 	h.handler = New(svc, metaClient, func() Settings {
 		return Settings{
 			ExternalURL: h.server.URL,
-			Prowlarr:    ProwlarrSettings{URL: prow.URL, APIKey: "k", MovieCategories: []int{2000}},
+			Prowlarr:    ProwlarrSettings{URL: prow.URL, APIKey: "k", MovieCategories: []int{2000}, SearchCacheTTL: h.searchCacheTTL},
 			Addon:       AddonSettings{EnableMovies: true, EnableSeries: true},
 			Filters:     prowlarr.Filters{MinSeeders: 1},
 			MaxResults:  20,
