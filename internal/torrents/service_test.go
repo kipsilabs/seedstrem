@@ -439,3 +439,48 @@ func TestWaitForMetadataTimeout(t *testing.T) {
 		t.Fatal("expected timeout error")
 	}
 }
+
+// TestSelectAndLinkSeedFullBoostsBelowTop asserts that in full-seed mode
+// the played file is boosted to high (6), not maximum (7), with the other
+// files at normal. libtorrent picks priority-7 pieces rarest-first even in
+// sequential mode, so a whole file at 7 would download in random order and
+// swamp the first/last-piece boost (itself priority 7).
+func TestSelectAndLinkSeedFullBoostsBelowTop(t *testing.T) {
+	fakeDC := fake.New()
+	db, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	svc := New(db, fakeDC, func() Settings {
+		return Settings{MetadataTimeout: 2 * time.Second, SeedFull: true}
+	}, nil)
+
+	fakeDC.Put(&fake.Torrent{
+		Hash:  testHash,
+		State: downloader.StatePaused,
+		Files: []fake.File{
+			{Name: "Movie.2026.1080p.mkv", Size: 8 << 30},
+			{Name: "Movie.2026.1080p.nfo", Size: 4 << 10},
+		},
+	})
+	if _, err := svc.Resolve(context.Background(), testMagnet("Movie"), nil, Selector{}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	var played, others string
+	for _, c := range fakeDC.Calls() {
+		switch {
+		case strings.HasPrefix(c, "filePrio ") && strings.Contains(c, "indices=[0]"):
+			played = c
+		case strings.HasPrefix(c, "filePrio ") && strings.Contains(c, "indices=[1]"):
+			others = c
+		}
+	}
+	if !strings.HasSuffix(played, "priority=6") {
+		t.Errorf("played file priority call = %q, want priority=6", played)
+	}
+	if !strings.HasSuffix(others, "priority=1") {
+		t.Errorf("other files priority call = %q, want priority=1", others)
+	}
+}

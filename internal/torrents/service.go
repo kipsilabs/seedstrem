@@ -230,13 +230,20 @@ func (s *Service) SelectAndLink(ctx context.Context, tor store.Torrent, fileInde
 	}
 
 	// qBittorrent file priorities: 0 = do not download, 1 = normal,
-	// 7 = maximum. In full-seed mode the other files stay at normal so the
-	// whole torrent downloads (for ratio) while the played file is boosted
-	// to maximum so it downloads first for streaming. Otherwise the other
-	// files are skipped entirely and only the played file is fetched.
+	// 6 = high, 7 = maximum. In full-seed mode the other files stay at
+	// normal so the whole torrent downloads (for ratio) while the played
+	// file is boosted so it downloads first for streaming. Otherwise the
+	// other files are skipped entirely and only the played file is
+	// fetched.
+	//
+	// The boost is 6, never 7: libtorrent picks priority-7 pieces ahead of
+	// everything else in rarest-first order, even in sequential mode, and
+	// the first/last-piece boost is itself priority 7. A whole file at 7
+	// therefore downloads in random order with no head/tail preference,
+	// and the playability gate never opens until the download is done.
 	otherPrio, selectedPrio := 0, 1
 	if s.settings().SeedFull {
-		otherPrio, selectedPrio = 1, 7
+		otherPrio, selectedPrio = 1, 6
 	}
 	if err := s.dc.SetFilePriority(ctx, tor.Hash, unselectedIdx, otherPrio); err != nil {
 		return store.Link{}, fmt.Errorf("set other files priority: %w", err)
