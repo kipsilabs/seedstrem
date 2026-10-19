@@ -55,6 +55,22 @@ export function Torrents() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteTargets, setDeleteTargets] = useState<Torrent[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  async function forceSync() {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await api.forceSyncTorrents();
+      setRemoved(new Set());
+      refresh();
+      toast.success("Torrents synced from provider");
+    } catch (err) {
+      toast.error(`Couldn't sync torrents — ${(err as Error).message}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function copy(url: string) {
     try {
@@ -152,6 +168,20 @@ export function Torrents() {
               isOffline={isOffline}
               lastUpdated={lastUpdated}
             />
+            <button
+              className="btn btn-outline btn-sm"
+              disabled={syncing || deleting || isOffline}
+              onClick={forceSync}
+              title="Replace local metadata and file links from the provider, import labelled torrents, and remove missing entries"
+              aria-busy={syncing}
+            >
+              {syncing ? (
+                <span className="loading loading-spinner loading-xs" />
+              ) : (
+                <Icon name="refresh" size={16} />
+              )}
+              {syncing ? "Syncing…" : "Force sync"}
+            </button>
             <button
               className="btn btn-ghost btn-sm btn-square"
               aria-label="Refresh now"

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -24,6 +25,7 @@ import (
 	"github.com/kipsilabs/seedstrem/internal/prowlarr"
 	"github.com/kipsilabs/seedstrem/internal/qbit"
 	"github.com/kipsilabs/seedstrem/internal/store"
+	"github.com/kipsilabs/seedstrem/internal/syncer"
 	"github.com/kipsilabs/seedstrem/internal/torrents"
 )
 
@@ -31,13 +33,14 @@ const passwordMask = "••••••••"
 
 // Handler serves the admin API.
 type Handler struct {
-	config    *config.Manager
-	store     *store.Store
-	dc        *downloader.Swappable
-	svc       *torrents.Service
-	newClient func(config.Config) downloader.Client
-	logger    *slog.Logger
-	version   string
+	config      *config.Manager
+	store       *store.Store
+	dc          *downloader.Swappable
+	svc         *torrents.Service
+	newClient   func(config.Config) downloader.Client
+	logger      *slog.Logger
+	version     string
+	forceSyncMu sync.Mutex
 
 	// diskUsage reports (used, total) bytes for a local path. Injectable
 	// for tests; defaults to diskusage.Stat. Used only as the fallback
@@ -77,6 +80,7 @@ func (h *Handler) Router() http.Handler {
 		r.Post("/config/prowlarr-indexers", h.prowlarrIndexers)
 		r.Get("/status", h.status)
 		r.Get("/torrents", h.torrents)
+		r.Post("/torrents/sync", h.forceSyncTorrents)
 		r.Get("/deletions", h.deletions)
 		r.Delete("/torrents/{id}", h.deleteTorrent)
 	})
@@ -897,4 +901,19 @@ func (h *Handler) deletions(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+// forceSyncTorrents makes the download client authoritative for local metadata.
+func (h *Handler) forceSyncTorrents(w http.ResponseWriter, r *http.Request) {
+	if !h.forceSyncMu.TryLock() {
+		writeJSONError(w, http.StatusConflict, "a torrent sync is already running")
+		return
+	}
+	defer h.forceSyncMu.Unlock()
+	if err := syncer.New(h.store, h.dc, h.logger, 0).Force(r.Context(), h.config.Get().ClientLabel()); err != nil {
+		h.logger.Warn("admin: force sync failed", "error", err)
+		writeJSONError(w, http.StatusBadGateway, "couldn't sync torrents: "+err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
