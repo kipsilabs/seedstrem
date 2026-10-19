@@ -33,6 +33,8 @@ type Selector struct {
 	Source     string
 	ContentRef string
 	Indexer    string
+	// UserAgent records the caller that initiated the add, not subsequent plays.
+	UserAgent string
 }
 
 var videoExts = map[string]bool{

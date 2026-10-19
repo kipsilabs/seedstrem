@@ -160,6 +160,7 @@ func (s *Service) EnsureAdded(ctx context.Context, magnet string, torrentFile []
 		Season:        sel.Season,
 		Episode:       sel.Episode,
 		Indexer:       sel.Indexer,
+		UserAgent:     sel.UserAgent,
 	}
 	if err := s.store.InsertTorrent(ctx, tor); err != nil {
 		// A concurrent add of the same hash may have won the race (the

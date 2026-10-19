@@ -247,6 +247,7 @@ export function Torrents() {
                               <div className="truncate font-medium">{t.name || t.hash}</div>
                               <div className="flex gap-2 truncate text-xs opacity-60">
                                 {t.indexer && <span>{t.indexer}</span>}
+                                <span className="truncate" title={t.user_agent || "Unknown"}>Agent: {t.user_agent || "Unknown"}</span>
                                 {t.origin === "adopted" && <span>adopted from client</span>}
                               </div>
                             </td>
@@ -319,6 +320,7 @@ export function Torrents() {
                         {formatBytes(t.size)}
                       </span>
                       {t.indexer && <span className="truncate text-xs opacity-60">{t.indexer}</span>}
+                      <span className="max-w-full truncate text-xs opacity-60" title={t.user_agent || "Unknown"}>Agent: {t.user_agent || "Unknown"}</span>
                       {t.origin === "adopted" && (
                         <span className="truncate text-xs opacity-60">adopted</span>
                       )}
@@ -475,6 +477,9 @@ interface DetailProps {
 function TorrentDetail({ t, copiedUrl, onCopy }: DetailProps) {
   return (
     <div className="flex flex-col gap-2">
+      <div className="text-xs opacity-70 [overflow-wrap:anywhere]">
+        Added by (User-Agent): {t.user_agent || "Unknown"}
+      </div>
       {t.error && (
         <div className="alert alert-error py-2 text-sm">
           <Icon name="alert" size={16} />

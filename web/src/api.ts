@@ -176,6 +176,8 @@ export interface Torrent {
   uploaded: number;
   ratio: number;
   indexer?: string;
+  // HTTP caller that first added the torrent; absent when unknown.
+  user_agent?: string;
   // "native" when seedstrem added it, "adopted" when it was picked up
   // from the download client by label.
   origin?: string;
