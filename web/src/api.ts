@@ -252,6 +252,7 @@ export const api = {
     ),
   status: () => request<Status>("GET", "/api/status"),
   torrents: () => request<Torrent[]>("GET", "/api/torrents"),
+  forceSyncTorrents: () => request<void>("POST", "/api/torrents/sync"),
   deletions: () => request<Deletion[]>("GET", "/api/deletions"),
   deleteTorrent: (id: string) =>
     request<void>("DELETE", `/api/torrents/${encodeURIComponent(id)}`),
