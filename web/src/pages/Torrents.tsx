@@ -15,6 +15,7 @@ import {
   sortTorrents,
   totalDownloadSpeed,
 } from "../lib/torrentList";
+import { deleteTorrents, toggleVisibleSelection } from "../lib/torrentSelection";
 import { useToast } from "../components/Toast";
 import { StatusBadge } from "../components/StatusBadge";
 import { ProgressCell } from "../components/ProgressCell";
@@ -51,7 +52,8 @@ export function Torrents() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState("");
   const [removed, setRemoved] = useState<Set<string>>(new Set());
-  const [deleteTarget, setDeleteTarget] = useState<Torrent | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleteTargets, setDeleteTargets] = useState<Torrent[]>([]);
   const [deleting, setDeleting] = useState(false);
 
   async function copy(url: string) {
@@ -66,25 +68,42 @@ export function Torrents() {
   }
 
   async function confirmDelete() {
-    if (!deleteTarget) return;
-    const id = deleteTarget.id;
+    if (deleteTargets.length === 0 || deleting) return;
     setDeleting(true);
-    // Optimistic hide; restore on failure.
-    setRemoved((s) => new Set(s).add(id));
+    const ids = deleteTargets.map((t) => t.id);
+    // Optimistic hide; restore only the torrents whose deletion failed.
+    setRemoved((s) => new Set([...s, ...ids]));
     try {
-      await api.deleteTorrent(id);
-      toast.success("Torrent removed");
-      setDeleteTarget(null);
-    } catch (err) {
+      const { deleted, failed } = await deleteTorrents(ids, api.deleteTorrent);
       setRemoved((s) => {
         const next = new Set(s);
-        next.delete(id);
+        for (const { id } of failed) next.delete(id);
         return next;
       });
-      toast.error(`Couldn't remove torrent — ${(err as Error).message}`);
+      setSelected((s) => {
+        const next = new Set(s);
+        for (const id of deleted) next.delete(id);
+        return next;
+      });
+      if (deleted.length > 0) {
+        toast.success(deleted.length === 1 ? "Torrent removed" : `${deleted.length} torrents removed`);
+      }
+      setDeleteTargets((targets) => targets.filter((t) => failed.some((f) => f.id === t.id)));
+      if (failed.length > 0) {
+        toast.error(`Couldn't remove ${failed.length === 1 ? "torrent" : `${failed.length} torrents`} — ${failed[0].message}`);
+      }
     } finally {
       setDeleting(false);
     }
+  }
+
+  function toggleSelection(id: string) {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   const all = useMemo(() => (data ?? []).filter((t) => !removed.has(t.id)), [data, removed]);
@@ -93,6 +112,10 @@ export function Torrents() {
     () => sortTorrents(filterTorrents(all, query, statusFilter), sort),
     [all, query, statusFilter, sort],
   );
+
+  const selectedTorrents = all.filter((t) => selected.has(t.id));
+  const allVisibleSelected = visible.length > 0 && visible.every((t) => selected.has(t.id));
+  const someVisibleSelected = visible.some((t) => selected.has(t.id));
 
   if (!data) {
     return (
@@ -192,6 +215,35 @@ export function Torrents() {
             </label>
           </div>
 
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="checkbox checkbox-sm"
+                aria-label="Select all visible torrents"
+                checked={allVisibleSelected}
+                ref={(input) => {
+                  if (input) input.indeterminate = someVisibleSelected && !allVisibleSelected;
+                }}
+                disabled={deleting || visible.length === 0}
+                onChange={() => setSelected((s) => toggleVisibleSelection(s, visible.map((t) => t.id)))}
+              />
+              Select visible
+            </label>
+            <span className="text-sm opacity-70" role="status">{selectedTorrents.length} selected</span>
+            {selectedTorrents.length > 0 && (
+              <>
+                <button className="btn btn-ghost btn-sm" disabled={deleting} onClick={() => setSelected(new Set())}>
+                  Clear selection
+                </button>
+                <button className="btn btn-error btn-sm" disabled={deleting} onClick={() => setDeleteTargets(selectedTorrents)}>
+                  <Icon name="trash" size={15} />
+                  Remove selected ({selectedTorrents.length})
+                </button>
+              </>
+            )}
+          </div>
+
           {visible.length === 0 ? (
             <div className="surface p-8 text-center text-sm opacity-70">
               No torrents match{filtering ? " this filter." : "."}{" "}
@@ -214,6 +266,7 @@ export function Torrents() {
                 <table className="table w-full">
                   <thead>
                     <tr>
+                      <th className="w-8"><span className="sr-only">Select torrent</span></th>
                       <th className="w-8" />
                       <SortTh label="Name" k="name" sort={sort} onSort={setSort} />
                       <SortTh label="Status" k="status" sort={sort} onSort={setSort} />
@@ -232,10 +285,20 @@ export function Torrents() {
                       return (
                         <Fragment key={t.id}>
                           <tr
-                            className="cursor-pointer hover:bg-base-300/50"
+                            className={`cursor-pointer hover:bg-base-300/50 ${selected.has(t.id) ? "bg-primary/10" : ""}`}
                             onClick={() => setExpanded(open ? null : t.id)}
                             aria-expanded={open}
                           >
+                            <td onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                className="checkbox checkbox-sm"
+                                aria-label={`Select ${t.name || t.hash}`}
+                                checked={selected.has(t.id)}
+                                disabled={deleting}
+                                onChange={() => toggleSelection(t.id)}
+                              />
+                            </td>
                             <td className="pr-0">
                               <Icon
                                 name="chevron"
@@ -273,11 +336,12 @@ export function Torrents() {
                             <td>
                               <button
                                 className="btn btn-ghost btn-xs btn-square text-error"
+                                disabled={deleting}
                                 aria-label={`Remove ${t.name || t.hash}`}
                                 title="Remove torrent"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setDeleteTarget(t);
+                                  setDeleteTargets([t]);
                                 }}
                               >
                                 <Icon name="trash" size={15} />
@@ -286,7 +350,7 @@ export function Torrents() {
                           </tr>
                           {open && (
                             <tr>
-                              <td colSpan={10} className="bg-base-200/60">
+                              <td colSpan={11} className="bg-base-200/60">
                                 <TorrentDetail t={t} copiedUrl={copiedUrl} onCopy={copy} />
                               </td>
                             </tr>
@@ -301,15 +365,24 @@ export function Torrents() {
               {/* Mobile cards */}
               <div className="flex flex-col gap-3 md:hidden">
                 {visible.map((t) => (
-                  <div key={t.id} className="surface p-4">
+                  <div key={t.id} className={`surface p-4 ${selected.has(t.id) ? "ring-2 ring-primary" : ""}`}>
                     <div className="flex items-start justify-between gap-2">
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm"
+                        aria-label={`Select ${t.name || t.hash}`}
+                        checked={selected.has(t.id)}
+                        disabled={deleting}
+                        onChange={() => toggleSelection(t.id)}
+                      />
                       <span className="min-w-0 flex-1 truncate font-medium">
                         {t.name || t.hash}
                       </span>
                       <button
                         className="btn btn-ghost btn-xs btn-square text-error"
+                        disabled={deleting}
                         aria-label={`Remove ${t.name || t.hash}`}
-                        onClick={() => setDeleteTarget(t)}
+                        onClick={() => setDeleteTargets([t])}
                       >
                         <Icon name="trash" size={15} />
                       </button>
@@ -359,16 +432,18 @@ export function Torrents() {
       )}
 
       <ConfirmDialog
-        open={deleteTarget !== null}
-        title="Remove torrent?"
-        confirmLabel="Remove"
+        open={deleteTargets.length > 0}
+        title={deleteTargets.length > 1 ? `Remove ${deleteTargets.length} torrents?` : "Remove torrent?"}
+        confirmLabel={deleteTargets.length > 1 ? `Remove ${deleteTargets.length} torrents` : "Remove"}
         danger
         busy={deleting}
-        onCancel={() => !deleting && setDeleteTarget(null)}
+        onCancel={() => !deleting && setDeleteTargets([])}
         onConfirm={confirmDelete}
       >
         <span className="break-words">
-          Remove <strong>{deleteTarget?.name || deleteTarget?.hash}</strong> from seedstrem?
+          Remove <strong>{deleteTargets.length === 1
+            ? deleteTargets[0].name || deleteTargets[0].hash
+            : `${deleteTargets.length} selected torrents`}</strong> from seedstrem?{" "}
           Downloaded files are deleted only if that option is enabled in Settings.
         </span>
       </ConfirmDialog>
