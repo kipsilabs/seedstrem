@@ -40,7 +40,8 @@ func (h *Handler) play(w http.ResponseWriter, r *http.Request) {
 		// Prowlarr indexer this release came from (empty for stream URLs
 		// that predate it) — persisted so cleanup can apply the indexer's
 		// own seed time.
-		Indexer: r.URL.Query().Get("ix"),
+		Indexer:   r.URL.Query().Get("ix"),
+		UserAgent: r.UserAgent(),
 	}
 	if r.URL.Query().Get("series") == "1" {
 		sel.IsSeries = true

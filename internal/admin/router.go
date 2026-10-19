@@ -664,17 +664,18 @@ func (h *Handler) liveByHash(ctx context.Context, stored []store.Torrent) map[st
 
 // torrentItem is the UI torrent listing shape.
 type torrentItem struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Hash     string  `json:"hash"`
-	Status   string  `json:"status"`
-	Progress float64 `json:"progress"`
-	Speed    int64   `json:"speed"`
-	Seeders  int64   `json:"seeders"`
-	Size     int64   `json:"size"`
-	Uploaded int64   `json:"uploaded"`
-	Ratio    float64 `json:"ratio"`
-	Indexer  string  `json:"indexer,omitempty"`
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Hash      string  `json:"hash"`
+	Status    string  `json:"status"`
+	Progress  float64 `json:"progress"`
+	Speed     int64   `json:"speed"`
+	Seeders   int64   `json:"seeders"`
+	Size      int64   `json:"size"`
+	Uploaded  int64   `json:"uploaded"`
+	Ratio     float64 `json:"ratio"`
+	Indexer   string  `json:"indexer,omitempty"`
+	UserAgent string  `json:"user_agent,omitempty"`
 	// SeedTime is the seed time governing THIS torrent (its indexer's
 	// override when it has one, else the global default), in seconds, so
 	// the UI's time-left readout matches what cleanup will actually do.
@@ -735,6 +736,7 @@ func (h *Handler) torrents(w http.ResponseWriter, r *http.Request) {
 			Uploaded:    info.Uploaded,
 			Ratio:       info.Ratio,
 			Indexer:     tor.Indexer,
+			UserAgent:   tor.UserAgent,
 			SeedTime:    int64(cfg.Cleanup.EffectiveSeedTime(tor.Indexer) / time.Second),
 			SeedingTime: int64(info.SeedingTime / time.Second),
 			AddedAt:     tor.AddedAt,

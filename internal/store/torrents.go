@@ -47,14 +47,16 @@ type Torrent struct {
 	Indexer string
 	// Origin is OriginNative or OriginAdopted; see the Origin constants.
 	Origin string
+	// UserAgent is the HTTP caller that first added the torrent, empty when unknown.
+	UserAgent string
 }
 
-const torrentCols = `id, hash, name, phase, added_at, magnet, error, content_source, content_ref, season, episode, indexer, origin`
+const torrentCols = `id, hash, name, phase, added_at, magnet, error, content_source, content_ref, season, episode, indexer, origin, user_agent`
 
 func scanTorrent(row interface{ Scan(...any) error }) (Torrent, error) {
 	var t Torrent
 	err := row.Scan(&t.ID, &t.Hash, &t.Name, &t.Phase, &t.AddedAt, &t.Magnet, &t.Error,
-		&t.ContentSource, &t.ContentRef, &t.Season, &t.Episode, &t.Indexer, &t.Origin)
+		&t.ContentSource, &t.ContentRef, &t.Season, &t.Episode, &t.Indexer, &t.Origin, &t.UserAgent)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Torrent{}, ErrNotFound
 	}
@@ -71,9 +73,9 @@ func (s *Store) InsertTorrent(ctx context.Context, t Torrent) error {
 		origin = OriginNative
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO torrents (`+torrentCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO torrents (`+torrentCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.Hash, t.Name, t.Phase, t.AddedAt, t.Magnet, t.Error,
-		t.ContentSource, t.ContentRef, t.Season, t.Episode, t.Indexer, origin)
+		t.ContentSource, t.ContentRef, t.Season, t.Episode, t.Indexer, origin, t.UserAgent)
 	if err != nil {
 		return fmt.Errorf("insert torrent %s: %w", t.ID, err)
 	}
