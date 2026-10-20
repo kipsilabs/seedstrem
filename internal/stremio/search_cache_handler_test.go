@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -40,16 +41,20 @@ func TestStreamRepeatedRequestServedFromSearchCache(t *testing.T) {
 	}))
 	defer prow.Close()
 
+	ttl := time.Minute
 	h := New(nil, meta.New("", ""), func() Settings {
 		return Settings{
 			Prowlarr: ProwlarrSettings{
 				URL: prow.URL, APIKey: "k", TVCategories: []int{5000},
-				SearchCacheTTL: time.Minute,
+				SearchCacheTTL: ttl,
 			},
 			Addon:      AddonSettings{EnableSeries: true},
 			MaxResults: 20,
 		}
 	}, "test", nil)
+
+	now := time.Unix(1000, 0)
+	h.searchCache.now = func() time.Time { return now }
 
 	root := chi.NewRouter()
 	root.Mount("/stremio", h.Router())
@@ -77,15 +82,29 @@ func TestStreamRepeatedRequestServedFromSearchCache(t *testing.T) {
 	}
 
 	second := get()
-	// The episode search (non-empty results) is cached; only the empty
-	// season-pack search may repeat — but no more searches than the first
-	// request needed, and at least one fewer thanks to the cache.
-	afterSecond := searches.Load()
-	if grew := afterSecond - afterFirst; grew >= afterFirst {
-		t.Fatalf("second request re-searched everything: %d new searches after %d initial", grew, afterFirst)
+	if grew := searches.Load() - afterFirst; grew != 0 {
+		t.Fatalf("cached request performed %d new searches, want none", grew)
+	}
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("cached response differs: first=%+v second=%+v", first, second)
 	}
 
-	if len(first.Streams) == 0 || len(second.Streams) != len(first.Streams) {
-		t.Fatalf("cached response differs: first=%d second=%d streams", len(first.Streams), len(second.Streams))
+	if len(first.Streams) == 0 {
+		t.Fatal("expected non-empty streams")
+	}
+
+	// Expired entries must search again rather than hiding newer results.
+	now = now.Add(time.Minute + time.Second)
+	get()
+	afterExpiry := searches.Load()
+	if afterExpiry <= afterFirst {
+		t.Fatal("expired cache did not perform a new search")
+	}
+
+	// A live config change disabling caching must bypass populated entries.
+	ttl = 0
+	get()
+	if searches.Load() <= afterExpiry {
+		t.Fatal("disabled cache did not perform a new search")
 	}
 }
