@@ -71,64 +71,16 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	// canceled the request before any streams were returned).
 	owned := h.svc.OwnedForContent(ctx, q.Source, q.ID, q.Season, q.Episode)
 
-	// tt-sourced (IMDb) queries search Prowlarr by id token, split across
-	// indexers by capability (see ttSearch). Anime ids have no
-	// Prowlarr-recognized id token, so those resolve a title and search
-	// by free text across whatever indexers are configured.
 	var results []prowlarr.Result
-	switch {
-	case len(owned) > 0:
-		// Fast path: we already have this content, so serve the owned
-		// torrents and skip the Prowlarr search altogether.
+	if len(owned) > 0 {
 		h.logger.Debug("stremio: serving owned content, skipping prowlarr search", "id", id, "owned", len(owned))
-	case q.IsAnime():
-		title, err := h.meta.AnimeTitle(ctx, q.Source, q.ID)
+	} else {
+		results, err = h.discoverySearch(ctx, q, s)
 		if err != nil {
-			h.logger.Warn("stremio: title resolution failed", "id", id, "error", err)
+			h.logger.Warn("stremio: discovery search failed", "id", id, "error", err)
 			writeJSON(w, http.StatusOK, empty)
 			return
 		}
-		query, categories := buildAnimeSearch(q, title, s.Prowlarr)
-		pc := h.prowlarr(s)
-		ids := h.resolveIndexerIDs(ctx, pc, s)
-		h.logger.Debug("stremio: prowlarr search",
-			"query", query, "type", "search", "categories", categories, "indexers", len(ids))
-		results, err = h.searchEach(ctx, pc, s, query, "search", categories, ids)
-		if err != nil {
-			h.logger.Warn("stremio: prowlarr search failed", "query", query, "error", err)
-			writeJSON(w, http.StatusOK, empty)
-			return
-		}
-	default:
-		// The episode-scoped search carries an {Episode} token, which
-		// indexers honor by returning only single-episode releases — full
-		// season packs never come back. A second, season-only search
-		// (Sonarr does the same) surfaces the packs. The two are
-		// independent, so run them concurrently: sequentially they roughly
-		// doubled the response time, which was tripping the caller's fetch
-		// timeout. Dedup later collapses any release both searches returned.
-		var (
-			wg      sync.WaitGroup
-			epRes   []prowlarr.Result
-			epErr   error
-			packRes []prowlarr.Result
-		)
-		wg.Go(func() {
-			epRes, epErr = h.ttSearch(ctx, q, s)
-		})
-		wg.Go(func() {
-			// Best-effort: seasonPacks never returns an error (a failed
-			// season search just yields no packs), so it can't fail the
-			// request; a non-series/movie query yields nil cheaply.
-			packRes = h.seasonPacks(ctx, q, s)
-		})
-		wg.Wait()
-		if epErr != nil {
-			h.logger.Warn("stremio: prowlarr search failed", "id", id, "error", epErr)
-			writeJSON(w, http.StatusOK, empty)
-			return
-		}
-		results = append(epRes, packRes...)
 	}
 
 	raw := len(results)
@@ -223,6 +175,71 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		items = append(items, h.toStreamItem(s.ExternalURL, q, res, progress[res.InfoHash]))
 	}
 	writeJSON(w, http.StatusOK, streamResponse{Streams: items})
+}
+
+// discoverySearch caches the combined discovery results so a cache hit
+// skips metadata lookups and all search branches, including empty fallbacks.
+// Filtering and live progress are applied by stream on every request.
+func (h *Handler) discoverySearch(ctx context.Context, q meta.Query, s Settings) ([]prowlarr.Result, error) {
+	_, _, categories := buildIDSearch(q, s.Prowlarr)
+	if q.IsAnime() {
+		_, categories = buildAnimeSearch(q, "", s.Prowlarr)
+	}
+	identity := fmt.Sprintf("%s:%s:%d:%d:%d", q.Source, q.ID, q.Kind, q.Season, q.Episode)
+	key := searchCacheKey(s.Prowlarr.URL, identity, "discovery", categories, s.Prowlarr.IndexerIDs)
+	results, _, err := h.searchCache.do(key, s.Prowlarr.SearchCacheTTL, func() ([]prowlarr.Result, error) {
+		var results []prowlarr.Result
+		switch {
+		case q.IsAnime():
+			title, err := h.meta.AnimeTitle(ctx, q.Source, q.ID)
+			if err != nil {
+				h.logger.Warn("stremio: title resolution failed", "id", q.ID, "error", err)
+				return nil, err
+			}
+			query, categories := buildAnimeSearch(q, title, s.Prowlarr)
+			pc := h.prowlarr(s)
+			ids := h.resolveIndexerIDs(ctx, pc, s)
+			h.logger.Debug("stremio: prowlarr search",
+				"query", query, "type", "search", "categories", categories, "indexers", len(ids))
+			results, err = h.searchEach(ctx, pc, s, query, "search", categories, ids)
+			if err != nil {
+				h.logger.Warn("stremio: prowlarr search failed", "query", query, "error", err)
+				return nil, err
+			}
+		default:
+			// The episode-scoped search carries an {Episode} token, which
+			// indexers honor by returning only single-episode releases — full
+			// season packs never come back. A second, season-only search
+			// (Sonarr does the same) surfaces the packs. The two are
+			// independent, so run them concurrently: sequentially they roughly
+			// doubled the response time, which was tripping the caller's fetch
+			// timeout. Dedup later collapses any release both searches returned.
+			var (
+				wg      sync.WaitGroup
+				epRes   []prowlarr.Result
+				epErr   error
+				packRes []prowlarr.Result
+			)
+			wg.Go(func() {
+				epRes, epErr = h.ttSearch(ctx, q, s)
+			})
+			wg.Go(func() {
+				// Best-effort: seasonPacks never returns an error (a failed
+				// season search just yields no packs), so it can't fail the
+				// request; a non-series/movie query yields nil cheaply.
+				packRes = h.seasonPacks(ctx, q, s)
+			})
+			wg.Wait()
+			if epErr != nil {
+				h.logger.Warn("stremio: prowlarr search failed", "id", q.ID, "error", epErr)
+				return nil, epErr
+			}
+			results = append(epRes, packRes...)
+		}
+
+		return results, nil
+	})
+	return slices.Clone(results), err
 }
 
 // applyDiskGate filters NEW Prowlarr candidates against the configured
