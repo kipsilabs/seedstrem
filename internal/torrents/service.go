@@ -253,6 +253,10 @@ func (s *Service) SelectAndLink(ctx context.Context, tor store.Torrent, fileInde
 	// first/last-piece boost. Re-asserting here sits behind that
 	// recompute instead of racing it.
 	s.ensureStreamingPrioThrottled(ctx, tor.Hash)
+	// Don't wait for the player's first request to start fetching the
+	// container header and index: begin now, while the player is still
+	// being launched.
+	s.startWarmup(ctx, tor.Hash, fileIndex, files)
 
 	token, err := NewLinkToken()
 	if err != nil {
