@@ -95,6 +95,10 @@ func (s *Swappable) FreeSpace(ctx context.Context) (int64, error) {
 	return s.get().FreeSpace(ctx)
 }
 
+func (s *Swappable) ExportTorrent(ctx context.Context, hash string) ([]byte, error) {
+	return s.get().ExportTorrent(ctx, hash)
+}
+
 func (s *Swappable) Version(ctx context.Context) (string, error) {
 	return s.get().Version(ctx)
 }

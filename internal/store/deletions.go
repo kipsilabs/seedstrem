@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 )
 
@@ -28,8 +29,10 @@ const (
 	DeleteReasonUnadopted = "unadopted"
 )
 
-// DeletionRetention is how long deletion records are kept and shown.
-const DeletionRetention = 48 * time.Hour
+// DefaultDeletionRetention is how long deletion records (and their saved
+// .torrent files) are kept and shown unless SetDeletionRetention says
+// otherwise.
+const DefaultDeletionRetention = 30 * 24 * time.Hour
 
 // DeletionEvent is one recorded removal. The evidence fields carry
 // whatever the removing component knew at decision time; a field the
@@ -64,6 +67,9 @@ type DeletionEvent struct {
 type Deletion struct {
 	ID string
 	DeletionEvent
+	// HasTorrentFile reports whether a saved .torrent exists for the
+	// hash, i.e. whether the torrent can be re-added.
+	HasTorrentFile bool
 }
 
 const deletionCols = `id, torrent_id, hash, name, indexer, origin, deleted_at, reason, ` +
@@ -110,19 +116,27 @@ func (s *Store) RecordDeletion(ctx context.Context, ev DeletionEvent) error {
 	}
 	if _, err := s.db.ExecContext(ctx,
 		`DELETE FROM torrent_deletions WHERE deleted_at < ?`,
-		now.Add(-DeletionRetention).Unix()); err != nil {
+		now.Add(-s.DeletionRetention()).Unix()); err != nil {
 		return fmt.Errorf("prune deletions: %w", err)
+	}
+	// Drop saved .torrent files no live torrent or history entry needs.
+	if _, err := s.db.ExecContext(ctx,
+		`DELETE FROM torrent_files
+		 WHERE hash NOT IN (SELECT hash FROM torrents)
+		   AND hash NOT IN (SELECT hash FROM torrent_deletions)`); err != nil {
+		return fmt.Errorf("prune torrent files: %w", err)
 	}
 	return nil
 }
 
-// Deletions returns the removals recorded within DeletionRetention,
+// Deletions returns the removals recorded within the retention window,
 // newest first. The cutoff is applied on read so an idle instance — one
 // where no write has triggered a prune — still shows only the window.
 func (s *Store) Deletions(ctx context.Context) ([]Deletion, error) {
-	cutoff := time.Now().Add(-DeletionRetention).Unix()
+	cutoff := time.Now().Add(-s.DeletionRetention()).Unix()
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+deletionCols+` FROM torrent_deletions WHERE deleted_at >= ? ORDER BY deleted_at DESC`,
+		`SELECT `+prefixed("d.", deletionCols)+`, EXISTS(SELECT 1 FROM torrent_files f WHERE f.hash = d.hash)
+		 FROM torrent_deletions d WHERE d.deleted_at >= ? ORDER BY d.deleted_at DESC`,
 		cutoff)
 	if err != nil {
 		return nil, fmt.Errorf("query deletions: %w", err)
@@ -135,7 +149,7 @@ func (s *Store) Deletions(ctx context.Context) ([]Deletion, error) {
 		var seedingTime, seedLimit int64
 		if err := rows.Scan(&d.ID, &d.TorrentID, &d.Hash, &d.Name, &d.Indexer, &d.Origin,
 			&d.DeletedAt, &d.Reason, &seedingTime, &seedLimit,
-			&d.Ratio, &d.RatioLimit, &d.Progress, &d.ProgressLimit, &d.FilesDeleted); err != nil {
+			&d.Ratio, &d.RatioLimit, &d.Progress, &d.ProgressLimit, &d.FilesDeleted, &d.HasTorrentFile); err != nil {
 			return nil, fmt.Errorf("scan deletion: %w", err)
 		}
 		d.SeedingTime = time.Duration(seedingTime) * time.Second
@@ -143,4 +157,41 @@ func (s *Store) Deletions(ctx context.Context) ([]Deletion, error) {
 		out = append(out, d)
 	}
 	return out, rows.Err()
+}
+
+// prefixed qualifies each column in a comma-separated list with prefix.
+func prefixed(prefix, cols string) string {
+	parts := strings.Split(cols, ",")
+	for i, p := range parts {
+		parts[i] = prefix + strings.TrimSpace(p)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// DeletionRetention returns the current history retention window.
+func (s *Store) DeletionRetention() time.Duration {
+	if d := s.retention.Load(); d > 0 {
+		return time.Duration(d)
+	}
+	return DefaultDeletionRetention
+}
+
+// SetDeletionRetention changes the history retention window; d <= 0
+// restores the default. Safe for concurrent use (config hot-reload).
+func (s *Store) SetDeletionRetention(d time.Duration) {
+	s.retention.Store(int64(d))
+}
+
+// DeletionByID returns one history entry, or ErrNotFound.
+func (s *Store) DeletionByID(ctx context.Context, id string) (Deletion, error) {
+	all, err := s.Deletions(ctx)
+	if err != nil {
+		return Deletion{}, err
+	}
+	for _, d := range all {
+		if d.ID == id {
+			return d, nil
+		}
+	}
+	return Deletion{}, ErrNotFound
 }

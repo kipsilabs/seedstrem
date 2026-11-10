@@ -69,3 +69,25 @@ func TestSPAServesIndexAndFallback(t *testing.T) {
 		t.Errorf("POST to spa route = %d; want 404", w.Code)
 	}
 }
+
+func TestSPACacheHeaders(t *testing.T) {
+	h := New(Options{})
+	// The shell, service worker and manifest must always revalidate, or an
+	// installed PWA can get stuck on a stale build.
+	for _, path := range []string{"/", "/sw.js", "/manifest.json", "/some/client/route"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if got := w.Header().Get("Cache-Control"); got != "no-cache" {
+			t.Errorf("%s Cache-Control = %q, want no-cache", path, got)
+		}
+	}
+}
+
+func TestSPAServesServiceWorker(t *testing.T) {
+	h := New(Options{})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/sw.js", nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "addEventListener") {
+		t.Errorf("sw.js = %d %.80s", w.Code, w.Body.String())
+	}
+}

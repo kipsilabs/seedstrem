@@ -75,17 +75,31 @@ func spaHandler() http.HandlerFunc {
 			path = "index.html"
 		}
 		if _, err := fs.Stat(dist, path); err == nil {
+			setCacheControl(w, path)
 			fileServer.ServeHTTP(w, r)
 			return
 		}
 		// Client-side route: fall back to index.html if the UI is built.
 		if _, err := fs.Stat(dist, "index.html"); err == nil {
+			setCacheControl(w, "index.html")
 			r.URL.Path = "/"
 			fileServer.ServeHTTP(w, r)
 			return
 		}
 		http.Error(w, "seedstrem: web UI not built (run make web-build)", http.StatusNotFound)
 	}
+}
+
+// setCacheControl lets browsers keep content-hashed build assets forever
+// but forces everything else (index.html, the service worker, the
+// manifest) to revalidate, so an installed PWA never gets stuck on an
+// old build.
+func setCacheControl(w http.ResponseWriter, path string) {
+	if strings.HasPrefix(path, "assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-cache")
 }
 
 func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {

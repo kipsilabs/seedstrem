@@ -506,6 +506,11 @@ func (c *client) IncompleteFileHints(context.Context) (downloader.IncompleteHint
 
 // FreeSpace asks the daemon for free space at its default download
 // location; core.get_free_space treats an empty path as "the default".
+// ExportTorrent is unsupported: Deluge's RPC has no .torrent export.
+func (c *client) ExportTorrent(context.Context, string) ([]byte, error) {
+	return nil, downloader.ErrNotSupported
+}
+
 func (c *client) FreeSpace(ctx context.Context) (int64, error) {
 	var free int64
 	err := c.do(ctx, func(ctx context.Context) error {

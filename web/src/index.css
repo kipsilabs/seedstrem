@@ -180,3 +180,13 @@ h1, h2, h3, .tracking-brand {
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Installed PWA on notched phones (viewport-fit=cover): keep content clear
+   of the notch, home indicator and rounded corners. */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

@@ -12,6 +12,7 @@ export type IconName =
   | "logout"
   | "menu"
   | "close"
+  | "plus"
   | "trash"
   | "search"
   | "refresh"
@@ -43,6 +44,7 @@ const PATHS: Record<IconName, string> = {
   logout: "M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3M16 17l5-5-5-5M21 12H9",
   menu: "M4 7h16M4 12h16M4 17h16",
   close: "M6 6l12 12M18 6 6 18",
+  plus: "M12 5v14M5 12h14",
   trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-4.3-4.3",
   refresh: "M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5",

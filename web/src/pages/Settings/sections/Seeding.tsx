@@ -27,6 +27,13 @@ export function Seeding({ config, update }: SectionProps) {
         />
       </div>
       <IndexerSeedTimes config={config} update={update} />
+      <NumberField
+        label="Keep History for (days)"
+        min={1}
+        value={config.cleanup.history_retention_days}
+        onChange={(v) => update((c) => (c.cleanup.history_retention_days = v))}
+        hint="Removed torrents and their saved .torrent files are deleted after this long. Until then they can be re-added from History."
+      />
       <div className="grid gap-4 sm:grid-cols-2">
         <SelectField
           label="Delete order when cleaning up"

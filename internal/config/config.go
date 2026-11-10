@@ -217,6 +217,9 @@ type Cleanup struct {
 	// torrent whose indexer is unknown) uses SeedTime. A value of 0
 	// disables seed-time removal for that indexer.
 	IndexerSeedTimes map[string]time.Duration `yaml:"indexer_seed_times"`
+	// HistoryRetention is how long removed torrents stay in History,
+	// together with their saved .torrent files (so they can be re-added).
+	HistoryRetention time.Duration `yaml:"history_retention"`
 }
 
 // EffectiveSeedTime returns the seed time governing a torrent grabbed from
@@ -379,6 +382,7 @@ func Default() Config {
 			SeedTime:             72 * time.Hour,
 			MinProgressForCancel: 0.05,
 			DeletePolicy:         DeletePolicyOldestFirst,
+			HistoryRetention:     30 * 24 * time.Hour,
 		},
 		Seeding: Seeding{Full: true},
 		RSS: RSS{
@@ -691,6 +695,9 @@ func (c Config) Validate() error {
 	}
 	if c.Cleanup.SeedTime < 0 {
 		errs = append(errs, errors.New("cleanup.seed_time must not be negative (0 disables seed-time cleanup)"))
+	}
+	if c.Cleanup.HistoryRetention <= 0 {
+		errs = append(errs, errors.New("cleanup.history_retention must be positive"))
 	}
 	// Sorted so the error text is deterministic across map iterations.
 	seenIndexers := make(map[string]string, len(c.Cleanup.IndexerSeedTimes))

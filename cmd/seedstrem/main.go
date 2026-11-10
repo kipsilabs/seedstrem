@@ -86,6 +86,8 @@ func run() error {
 	}
 	defer db.Close()
 
+	db.SetDeletionRetention(cfg.Cleanup.HistoryRetention)
+
 	cm := config.NewManager(cfg, *configPath)
 	dc := downloader.NewSwappable(buildDownloadClient(cfg))
 

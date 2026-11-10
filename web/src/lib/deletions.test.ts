@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deletionEvidence, deletionReasonLabel } from "./deletions";
+import { deletionEvidence, deletionReasonLabel, matchesDeletionQuery } from "./deletions";
 import type { Deletion } from "../api";
 
 function make(over: Partial<Deletion>): Deletion {
@@ -19,6 +19,7 @@ function make(over: Partial<Deletion>): Deletion {
     progress: 0,
     progress_limit: 0,
     files_deleted: false,
+    has_torrent_file: false,
     ...over,
   };
 }
@@ -61,5 +62,21 @@ describe("deletionReasonLabel", () => {
 
   it("passes an unknown reason through unchanged", () => {
     expect(deletionReasonLabel("who_knows")).toBe("who_knows");
+  });
+});
+
+describe("matchesDeletionQuery", () => {
+  const d = make({ name: "Some.Show.S01E01", hash: "AABBCC", indexer: "MyIndexer" });
+
+  it("matches everything for a blank query", () => {
+    expect(matchesDeletionQuery(d, "  ")).toBe(true);
+  });
+  it("matches name, hash and indexer case-insensitively", () => {
+    expect(matchesDeletionQuery(d, "some.show")).toBe(true);
+    expect(matchesDeletionQuery(d, "aabb")).toBe(true);
+    expect(matchesDeletionQuery(d, "myindexer")).toBe(true);
+  });
+  it("rejects non-matching queries", () => {
+    expect(matchesDeletionQuery(d, "other")).toBe(false);
   });
 });

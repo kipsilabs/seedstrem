@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -141,6 +142,14 @@ func (s *Service) EnsureAdded(ctx context.Context, magnet string, torrentFile []
 		s.logger.Debug("torrents: adding magnet to download client", "hash", hash, "name", name)
 		if err := s.dc.AddMagnet(ctx, magnet, opts); err != nil {
 			return store.Torrent{}, fmt.Errorf("add magnet to download client: %w", err)
+		}
+	}
+
+	if len(torrentFile) > 0 {
+		// Keep the .torrent so the torrent can be re-added from History
+		// after removal. Best effort: the add itself already succeeded.
+		if err := s.store.SaveTorrentFile(ctx, hash, torrentFile); err != nil {
+			s.logger.Warn("torrents: save .torrent file", "hash", hash, "error", err)
 		}
 	}
 
@@ -478,6 +487,7 @@ func (s *Service) StoredByHashes(ctx context.Context, hashes []string) map[strin
 // without stating a reason.
 func (s *Service) Remove(ctx context.Context, tor store.Torrent, ev store.DeletionEvent) error {
 	deleteFiles := s.settings().DeleteFilesOnRemove
+	s.preserveTorrentFile(ctx, tor.Hash)
 	if err := s.dc.Delete(ctx, tor.Hash, deleteFiles); err != nil && !errors.Is(err, downloader.ErrTorrentNotFound) {
 		return fmt.Errorf("delete from download client: %w", err)
 	}
@@ -520,4 +530,71 @@ func (s *Service) Resolve(ctx context.Context, magnet string, torrentFile []byte
 		return store.Link{}, err
 	}
 	return s.SelectAndLink(ctx, tor, idx, files)
+}
+
+// ErrNoTorrentFile means no saved .torrent exists for a hash, so it
+// cannot be re-added.
+var ErrNoTorrentFile = errors.New("no saved .torrent for this torrent")
+
+// preserveTorrentFile makes sure a .torrent copy is saved before the
+// client forgets the torrent. A file saved at add time wins; otherwise
+// the client is asked to export it. Failures only log: a removal must
+// never be blocked by an unsupported or unreachable export.
+func (s *Service) preserveTorrentFile(ctx context.Context, hash string) {
+	if _, err := s.store.TorrentFile(ctx, hash); err == nil {
+		return
+	}
+	raw, err := s.dc.ExportTorrent(ctx, hash)
+	if err != nil {
+		if !errors.Is(err, downloader.ErrNotSupported) && !errors.Is(err, downloader.ErrTorrentNotFound) {
+			s.logger.Warn("torrents: export .torrent before removal", "hash", hash, "error", err)
+		}
+		return
+	}
+	if err := s.store.SaveTorrentFile(ctx, hash, raw); err != nil {
+		s.logger.Warn("torrents: save exported .torrent", "hash", hash, "error", err)
+	}
+}
+
+// ReAdd adds a previously removed torrent back to the download client
+// from its saved .torrent, so it downloads and seeds again. It returns
+// ErrNoTorrentFile when History holds no copy.
+func (s *Service) ReAdd(ctx context.Context, hash string) (store.Torrent, error) {
+	raw, err := s.store.TorrentFile(ctx, hash)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.Torrent{}, ErrNoTorrentFile
+	}
+	if err != nil {
+		return store.Torrent{}, err
+	}
+	_, name, _, err := metainfo.FromTorrent(raw)
+	if err != nil {
+		return store.Torrent{}, fmt.Errorf("saved .torrent is invalid: %w", err)
+	}
+	magnet := "magnet:?xt=urn:btih:" + hash + "&dn=" + url.QueryEscape(name)
+	return s.EnsureAdded(ctx, magnet, raw, Selector{})
+}
+
+// ErrInvalidTorrent means a manually supplied magnet or .torrent could
+// not be parsed.
+var ErrInvalidTorrent = errors.New("invalid magnet or .torrent")
+
+// AddManual adds a torrent the user supplied directly (UI): either a
+// .torrent file's bytes (preferred when both are given) or a magnet.
+// It is idempotent on the infohash like EnsureAdded. userAgent records
+// who added it.
+func (s *Service) AddManual(ctx context.Context, magnet string, raw []byte, userAgent string) (store.Torrent, error) {
+	sel := Selector{UserAgent: userAgent}
+	if len(raw) > 0 {
+		hash, name, _, err := metainfo.FromTorrent(raw)
+		if err != nil {
+			return store.Torrent{}, fmt.Errorf("%w: %v", ErrInvalidTorrent, err)
+		}
+		magnet = "magnet:?xt=urn:btih:" + hash + "&dn=" + url.QueryEscape(name)
+		return s.EnsureAdded(ctx, magnet, raw, sel)
+	}
+	if _, _, err := metainfo.FromMagnet(strings.TrimSpace(magnet)); err != nil {
+		return store.Torrent{}, fmt.Errorf("%w: %v", ErrInvalidTorrent, err)
+	}
+	return s.EnsureAdded(ctx, strings.TrimSpace(magnet), nil, sel)
 }

@@ -82,5 +82,12 @@ type Client interface {
 	// only — not a percentage.
 	FreeSpace(ctx context.Context) (int64, error)
 
+	// ExportTorrent returns the raw .torrent the client holds for hash,
+	// used to keep a copy before the torrent is removed so it can be
+	// re-added later. Backends that cannot export (Deluge) or old
+	// versions (qBittorrent < 5.0) return ErrNotSupported; an unknown
+	// hash returns ErrTorrentNotFound.
+	ExportTorrent(ctx context.Context, hash string) ([]byte, error)
+
 	Version(ctx context.Context) (string, error)
 }
