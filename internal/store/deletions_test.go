@@ -96,6 +96,7 @@ func TestRecordDeletionSurvivesTorrentRemoval(t *testing.T) {
 
 func TestDeletionsHidesRecordsOlderThanRetention(t *testing.T) {
 	s := newTestStore(t)
+	s.SetDeletionRetention(48 * time.Hour)
 	ctx := context.Background()
 	now := time.Now()
 
@@ -127,6 +128,7 @@ func TestDeletionsHidesRecordsOlderThanRetention(t *testing.T) {
 
 func TestRecordDeletionPrunesExpiredRows(t *testing.T) {
 	s := newTestStore(t)
+	s.SetDeletionRetention(48 * time.Hour)
 	ctx := context.Background()
 
 	if err := s.RecordDeletion(ctx, DeletionEvent{

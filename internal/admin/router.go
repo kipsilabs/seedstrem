@@ -80,8 +80,10 @@ func (h *Handler) Router() http.Handler {
 		r.Post("/config/prowlarr-indexers", h.prowlarrIndexers)
 		r.Get("/status", h.status)
 		r.Get("/torrents", h.torrents)
+		r.Post("/torrents", h.addTorrent)
 		r.Post("/torrents/sync", h.forceSyncTorrents)
 		r.Get("/deletions", h.deletions)
+		r.Post("/deletions/{id}/readd", h.reAddDeletion)
 		r.Delete("/torrents/{id}", h.deleteTorrent)
 	})
 	return r
@@ -185,6 +187,7 @@ type configDTO struct {
 		TargetRatio                 float64           `json:"target_ratio"`
 		DeletePolicy                string            `json:"delete_policy"`
 		IndexerSeedTimes            []indexerSeedTime `json:"indexer_seed_times"`
+		HistoryRetentionDays        int               `json:"history_retention_days"`
 	} `json:"cleanup"`
 	Seeding struct {
 		Full bool `json:"full"`
@@ -265,6 +268,7 @@ func toDTO(cfg config.Config) configDTO {
 	dto.Cleanup.TargetRatio = cfg.Cleanup.TargetRatio
 	dto.Cleanup.DeletePolicy = cfg.Cleanup.DeletePolicy
 	dto.Cleanup.IndexerSeedTimes = indexerSeedTimesToDTO(cfg.Cleanup.IndexerSeedTimes)
+	dto.Cleanup.HistoryRetentionDays = int(cfg.Cleanup.HistoryRetention / (24 * time.Hour))
 	dto.Seeding.Full = cfg.Seeding.Full
 	dto.RSS.Enabled = cfg.RSS.Enabled
 	dto.RSS.IntervalMinutes = int(cfg.RSS.Interval / time.Minute)
@@ -418,6 +422,10 @@ func (dto configDTO) apply(cfg config.Config) config.Config {
 	if dto.Cleanup.SeedTimeHours >= 0 {
 		cfg.Cleanup.SeedTime = time.Duration(dto.Cleanup.SeedTimeHours) * time.Hour
 	}
+	// Retention must stay positive, so 0 means "keep the existing value".
+	if dto.Cleanup.HistoryRetentionDays > 0 {
+		cfg.Cleanup.HistoryRetention = time.Duration(dto.Cleanup.HistoryRetentionDays) * 24 * time.Hour
+	}
 	// Likewise 0 meaningfully disables the abandoned-download check.
 	cfg.Cleanup.MinProgressForCancel = float64(dto.Cleanup.MinProgressForCancelPercent) / 100
 	// 0 meaningfully disables the ratio trigger; always applied.
@@ -489,6 +497,8 @@ func (h *Handler) putConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		h.logger.Info("download client reconfigured", "type", effectiveType(next))
 	}
+
+	h.store.SetDeletionRetention(next.Cleanup.HistoryRetention)
 
 	resp := map[string]any{"config": toDTO(next)}
 	// These settings are read once at startup (listener, database handle,
@@ -869,6 +879,9 @@ type deletionItem struct {
 	Progress      float64 `json:"progress"`
 	ProgressLimit float64 `json:"progress_limit"`
 	FilesDeleted  bool    `json:"files_deleted"`
+	// HasTorrentFile is true when a .torrent copy is saved, i.e. the
+	// entry can be re-added.
+	HasTorrentFile bool `json:"has_torrent_file"`
 }
 
 // deletions returns the torrents removed within the retention window,
@@ -898,9 +911,85 @@ func (h *Handler) deletions(w http.ResponseWriter, r *http.Request) {
 			Progress:      d.Progress,
 			ProgressLimit: d.ProgressLimit,
 			FilesDeleted:  d.FilesDeleted,
+
+			HasTorrentFile: d.HasTorrentFile,
 		})
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+// maxTorrentUpload caps an uploaded .torrent; real ones are well under 1 MiB.
+const maxTorrentUpload = 8 << 20
+
+// addTorrent adds a torrent supplied from the UI: a multipart upload with
+// a "file" part (.torrent) or a JSON body {"magnet": "..."}.
+func (h *Handler) addTorrent(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxTorrentUpload)
+
+	var magnet string
+	var raw []byte
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/") {
+		if err := r.ParseMultipartForm(maxTorrentUpload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid upload")
+			return
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "missing .torrent file")
+			return
+		}
+		defer func() { _ = file.Close() }()
+		if raw, err = io.ReadAll(file); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "couldn't read the file")
+			return
+		}
+	} else {
+		var body struct {
+			Magnet string `json:"magnet"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		magnet = body.Magnet
+	}
+
+	tor, err := h.svc.AddManual(r.Context(), magnet, raw, "admin-ui")
+	if err != nil {
+		if errors.Is(err, torrents.ErrInvalidTorrent) {
+			writeJSONError(w, http.StatusBadRequest, "that isn't a valid magnet link or .torrent file")
+			return
+		}
+		h.logger.Warn("admin: add torrent", "error", err)
+		writeJSONError(w, http.StatusBadGateway, "couldn't add torrent: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"id": tor.ID, "hash": tor.Hash, "name": tor.Name})
+}
+
+// reAddDeletion adds a torrent from History back to the download client
+// using its saved .torrent.
+func (h *Handler) reAddDeletion(w http.ResponseWriter, r *http.Request) {
+	d, err := h.store.DeletionByID(r.Context(), chi.URLParam(r, "id"))
+	if errors.Is(err, store.ErrNotFound) {
+		writeJSONError(w, http.StatusNotFound, "history entry not found")
+		return
+	}
+	if err != nil {
+		h.logger.Warn("admin: look up deletion", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "look up history entry")
+		return
+	}
+	if _, err := h.svc.ReAdd(r.Context(), d.Hash); err != nil {
+		if errors.Is(err, torrents.ErrNoTorrentFile) {
+			writeJSONError(w, http.StatusConflict, "no saved .torrent for this entry, so it can't be re-added")
+			return
+		}
+		h.logger.Warn("admin: re-add torrent", "hash", d.Hash, "error", err)
+		writeJSONError(w, http.StatusBadGateway, "couldn't re-add torrent: "+err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // forceSyncTorrents makes the download client authoritative for local metadata.

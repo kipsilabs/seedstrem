@@ -69,6 +69,29 @@ type Server struct {
 	// byLabelErr is returned by TorrentsByLabel, so callers can be tested
 	// against an unreachable or incapable download client.
 	byLabelErr error
+	// exports backs ExportTorrent; hashes absent from it report
+	// ErrNotSupported like a backend that cannot export.
+	exports map[string][]byte
+}
+
+// SetExport makes ExportTorrent return raw for hash.
+func (s *Server) SetExport(hash string, raw []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.exports == nil {
+		s.exports = map[string][]byte{}
+	}
+	s.exports[hash] = raw
+}
+
+func (s *Server) ExportTorrent(_ context.Context, hash string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.record("export hash=%s", hash)
+	if raw, ok := s.exports[hash]; ok {
+		return raw, nil
+	}
+	return nil, downloader.ErrNotSupported
 }
 
 // SetHints sets the value returned by IncompleteFileHints.

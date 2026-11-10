@@ -14,13 +14,16 @@ export class ApiError extends Error {
 export const SESSION_EXPIRED_EVENT = "seedstrem:session-expired";
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // FormData bodies (file uploads) are sent as-is so the browser sets the
+  // multipart boundary; everything else is JSON.
+  const isForm = body instanceof FormData;
   const res = await fetch(path, {
     method,
     headers: {
       "X-Requested-With": "XMLHttpRequest",
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(body !== undefined && !isForm ? { "Content-Type": "application/json" } : {}),
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
   });
   if (res.status === 401 && !path.endsWith("/session")) {
     window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
@@ -114,6 +117,7 @@ export interface Config {
     target_ratio: number;
     delete_policy: string;
     indexer_seed_times: IndexerSeedTime[];
+    history_retention_days: number;
   };
   seeding: { full: boolean };
   rss: {
@@ -190,7 +194,7 @@ export interface Torrent {
   links: TorrentLink[];
 }
 
-// Deletion is one entry of the 48h removal history. Durations are
+// Deletion is one entry of the removal history. Durations are
 // seconds, matching Torrent.
 export interface Deletion {
   id: string;
@@ -208,6 +212,8 @@ export interface Deletion {
   progress: number;
   progress_limit: number;
   files_deleted: boolean;
+  // A saved .torrent exists, so the entry can be re-added.
+  has_torrent_file: boolean;
 }
 
 export const api = {
@@ -252,8 +258,17 @@ export const api = {
     ),
   status: () => request<Status>("GET", "/api/status"),
   torrents: () => request<Torrent[]>("GET", "/api/torrents"),
+  addMagnet: (magnet: string) =>
+    request<{ id: string; hash: string; name: string }>("POST", "/api/torrents", { magnet }),
+  addTorrentFile: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ id: string; hash: string; name: string }>("POST", "/api/torrents", form);
+  },
   forceSyncTorrents: () => request<void>("POST", "/api/torrents/sync"),
   deletions: () => request<Deletion[]>("GET", "/api/deletions"),
+  reAddDeletion: (id: string) =>
+    request<void>("POST", `/api/deletions/${encodeURIComponent(id)}/readd`),
   deleteTorrent: (id: string) =>
     request<void>("DELETE", `/api/torrents/${encodeURIComponent(id)}`),
 };

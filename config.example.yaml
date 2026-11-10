@@ -145,6 +145,10 @@ cleanup:
   # Order in which eligible torrents are removed when cleaning up:
   # oldest_first (by add time) or lowest_upload (least bytes uploaded).
   delete_policy: oldest_first
+  # How long removed torrents stay in History, along with their saved
+  # .torrent files, so they can be re-added (e.g. after a tracker rule
+  # change). Older entries and files are deleted automatically.
+  history_retention: 720h
   # Per-indexer overrides of seed_time, for trackers with their own
   # minimum seed time. Names must match the Prowlarr indexer
   # (case-insensitive); anything not listed uses seed_time above, as do

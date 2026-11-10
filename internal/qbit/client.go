@@ -323,6 +323,20 @@ func (c *client) FreeSpace(ctx context.Context) (int64, error) {
 	return main.ServerState.FreeSpaceOnDisk, nil
 }
 
+// ExportTorrent fetches the .torrent via /torrents/export (qBittorrent
+// 5.0+). Older servers answer 404, indistinguishable from an unknown
+// hash, so we check the torrent exists first to tell the two apart.
+func (c *client) ExportTorrent(ctx context.Context, hash string) ([]byte, error) {
+	if _, err := c.Torrent(ctx, hash); err != nil {
+		return nil, err
+	}
+	raw, err := c.qb.ExportTorrentCtx(ctx, hash)
+	if err != nil || len(raw) == 0 {
+		return nil, fmt.Errorf("%w: qbit export: %v", downloader.ErrNotSupported, err)
+	}
+	return raw, nil
+}
+
 func (c *client) Version(ctx context.Context) (string, error) {
 	v, err := c.qb.GetAppVersionCtx(ctx)
 	if err != nil {

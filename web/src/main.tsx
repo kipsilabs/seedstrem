@@ -12,6 +12,16 @@ import { Torrents } from "./pages/Torrents";
 import { History } from "./pages/History";
 import { Settings } from "./pages/Settings/Settings";
 
+// Register the service worker (installable PWA, instant reopen). Production
+// only: in dev it would cache stale Vite modules.
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      /* unsupported or blocked (e.g. plain http on a LAN) — the app works without it */
+    });
+  });
+}
+
 // Apply the remembered theme before first paint to avoid a flash.
 applyTheme(getStoredTheme());
 

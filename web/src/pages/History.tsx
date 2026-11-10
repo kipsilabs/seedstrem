@@ -1,7 +1,13 @@
 import { ReactNode, useMemo, useState } from "react";
-import { api } from "../api";
+import { api, type Deletion } from "../api";
 import { usePolling } from "../lib/usePolling";
-import { deletionEvidence, deletionReasonClass, deletionReasonLabel } from "../lib/deletions";
+import {
+  deletionEvidence,
+  deletionReasonClass,
+  deletionReasonLabel,
+  matchesDeletionQuery,
+} from "../lib/deletions";
+import { useToast } from "../components/Toast";
 import { FreshnessIndicator } from "../components/FreshnessIndicator";
 import { PageHeader } from "../components/PageHeader";
 import { Skeleton } from "../components/Skeleton";
@@ -20,7 +26,22 @@ export function History() {
   const { data, isStale, isOffline, lastUpdated, refresh } = usePolling(api.deletions, {
     baseIntervalMs: 10000,
   });
+  const toast = useToast();
   const [reason, setReason] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [readding, setReadding] = useState<string | null>(null);
+
+  async function reAdd(id: string) {
+    setReadding(id);
+    try {
+      await api.reAddDeletion(id);
+      toast.success("Torrent added back — it will download and seed again");
+    } catch (err) {
+      toast.error(`Couldn't re-add — ${(err as Error).message}`);
+    } finally {
+      setReadding(null);
+    }
+  }
 
   const counts = useMemo(
     () =>
@@ -31,8 +52,11 @@ export function History() {
     [data],
   );
   const visible = useMemo(
-    () => (data ?? []).filter((d) => reason === null || d.reason === reason),
-    [data, reason],
+    () =>
+      (data ?? []).filter(
+        (d) => (reason === null || d.reason === reason) && matchesDeletionQuery(d, query),
+      ),
+    [data, reason, query],
   );
 
   if (!data) {
@@ -54,7 +78,7 @@ export function History() {
         title="History"
         subtitle={
           data.length > 0
-            ? `${data.length} removal${data.length === 1 ? "" : "s"} in the last 48 hours`
+            ? `${data.length} removal${data.length === 1 ? "" : "s"} in History`
             : undefined
         }
         actions={
@@ -92,12 +116,39 @@ export function History() {
           </span>
           <h2 className="mt-4 text-lg font-bold tracking-brand">Nothing removed recently</h2>
           <p className="mx-auto mt-1 max-w-md text-sm opacity-70">
-            Torrents removed in the last 48 hours appear here, with the reason and the
-            measurement behind each decision.
+            Removed torrents appear here, with the reason and the measurement behind
+            each decision, and can be re-added to download and seed again.
           </p>
         </div>
       ) : (
         <>
+          <label className="input input-bordered flex items-center gap-2 md:w-72">
+            <Icon name="search" size={16} className="opacity-50" />
+            <input
+              type="search"
+              className="grow"
+              placeholder="Search name, hash, or indexer"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {query && (
+              <button
+                type="button"
+                className="opacity-50 hover:opacity-100"
+                aria-label="Clear search"
+                onClick={() => setQuery("")}
+              >
+                <Icon name="close" size={14} />
+              </button>
+            )}
+          </label>
+
+          {visible.length === 0 && (
+            <div className="surface p-6 text-center text-sm opacity-70">
+              No history entries match your search.
+            </div>
+          )}
+
           {Object.keys(counts).length > 1 && (
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by reason">
               <ReasonChip active={reason === null} onClick={() => setReason(null)}>
@@ -126,6 +177,7 @@ export function History() {
                   <th>Evidence</th>
                   <th>Indexer</th>
                   <th>Files</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -146,6 +198,9 @@ export function History() {
                     <td className="text-sm opacity-70">{d.indexer || "—"}</td>
                     <td className="text-sm opacity-70">
                       {d.files_deleted ? "Deleted" : "Kept"}
+                    </td>
+                    <td className="text-right">
+                      <ReAddButton d={d} busy={readding === d.id} onClick={() => reAdd(d.id)} />
                     </td>
                   </tr>
                 ))}
@@ -169,6 +224,9 @@ export function History() {
                 <div className="mt-2 flex justify-between text-xs opacity-60">
                   <span>{when(d.deleted_at)}</span>
                   <span>{d.files_deleted ? "Files deleted" : "Files kept"}</span>
+                </div>
+                <div className="mt-3">
+                  <ReAddButton d={d} busy={readding === d.id} onClick={() => reAdd(d.id)} block />
                 </div>
               </div>
             ))}
@@ -202,6 +260,31 @@ function ReasonChip({
       className={`btn btn-sm rounded-full ${active ? "btn-primary" : "btn-ghost bg-base-100 ring-1 ring-base-content/10"}`}
     >
       {children}
+    </button>
+  );
+}
+
+function ReAddButton({
+  d,
+  busy,
+  onClick,
+  block,
+}: {
+  d: Deletion;
+  busy: boolean;
+  onClick: () => void;
+  block?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={`btn btn-sm btn-outline ${block ? "w-full" : ""}`}
+      disabled={!d.has_torrent_file || busy}
+      title={d.has_torrent_file ? "Add back to the download client" : "No saved .torrent for this entry"}
+      onClick={onClick}
+    >
+      {busy ? <span className="loading loading-spinner loading-xs" /> : <Icon name="refresh" size={14} />}
+      Re-add
     </button>
   );
 }

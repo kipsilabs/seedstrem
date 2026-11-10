@@ -59,3 +59,15 @@ export function deletionEvidence(d: Deletion): string {
       return "—";
   }
 }
+
+// matchesDeletionQuery is the History page's search: a blank query
+// matches everything, otherwise name, hash or indexer must contain it.
+export function matchesDeletionQuery(d: Deletion, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    (d.name ?? "").toLowerCase().includes(q) ||
+    (d.hash ?? "").toLowerCase().includes(q) ||
+    (d.indexer ?? "").toLowerCase().includes(q)
+  );
+}

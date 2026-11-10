@@ -17,6 +17,7 @@ import {
 } from "../lib/torrentList";
 import { deleteTorrents, toggleVisibleSelection } from "../lib/torrentSelection";
 import { useToast } from "../components/Toast";
+import { AddTorrentDialog } from "../components/AddTorrentDialog";
 import { StatusBadge } from "../components/StatusBadge";
 import { ProgressCell } from "../components/ProgressCell";
 import { FreshnessIndicator } from "../components/FreshnessIndicator";
@@ -48,6 +49,7 @@ export function Torrents() {
     setParams(s ? { status: s } : {}, { replace: true });
 
   const [query, setQuery] = useState("");
+  const [adding, setAdding] = useState(false);
   const [sort, setSort] = useState<SortSpec>(DEFAULT_SORT);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState("");
@@ -168,6 +170,10 @@ export function Torrents() {
               isOffline={isOffline}
               lastUpdated={lastUpdated}
             />
+            <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
+              <Icon name="plus" size={16} />
+              Add
+            </button>
             <button
               className="btn btn-outline btn-sm"
               disabled={syncing || deleting || isOffline}
@@ -193,6 +199,8 @@ export function Torrents() {
           </>
         }
       />
+
+      <AddTorrentDialog open={adding} onClose={() => setAdding(false)} onAdded={refresh} />
 
       {(isStale || isOffline) && (
         <div className="alert alert-warning py-2">

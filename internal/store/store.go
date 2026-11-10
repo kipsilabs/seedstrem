@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"sync/atomic"
 
 	_ "modernc.org/sqlite"
 )
@@ -18,7 +19,8 @@ var migrationsFS embed.FS
 
 // Store wraps the SQLite database.
 type Store struct {
-	db *sql.DB
+	db        *sql.DB
+	retention atomic.Int64 // deletion-history retention, ns; 0 = default
 }
 
 // Open opens (creating if needed) the database at path and applies
