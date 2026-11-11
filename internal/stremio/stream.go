@@ -88,6 +88,7 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	if s.MaxResults > 0 && len(results) > s.MaxResults {
 		results = results[:s.MaxResults]
 	}
+	results = h.resolve(ctx, results, s)
 
 	// Disk-usage gate: once the download disk is too full, withhold NEW
 	// releases (and drop any whose size would push it past the threshold).
@@ -240,6 +241,31 @@ func (h *Handler) discoverySearch(ctx context.Context, q meta.Query, s Settings)
 		return results, nil
 	})
 	return slices.Clone(results), err
+}
+
+// resolve completes the magnet-less releases left after ranking and the
+// result cap (see prowlarr.Resolve), so only offered releases cost a
+// .torrent grab. Fetched .torrents are cached by download URL: a repeated
+// stream request re-derives the hash locally instead of grabbing again.
+// Bounded by the search timeout so a slow grab can't exceed the caller's
+// fetch timeout; a release not resolved in time is dropped.
+func (h *Handler) resolve(ctx context.Context, results []prowlarr.Result, s Settings) []prowlarr.Result {
+	if s.Prowlarr.SearchTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.Prowlarr.SearchTimeout)
+		defer cancel()
+	}
+	for i := range results {
+		if results[i].MagnetURL == "" {
+			results[i].TorrentFile = h.torrentFiles.get(results[i].DownloadURL)
+		}
+	}
+	results = h.prowlarr(s).Resolve(ctx, results)
+	for _, r := range results {
+		h.torrentFiles.put(r.DownloadURL, r.TorrentFile)
+	}
+	// Two indexers may carry the same release; only now is its hash known.
+	return prowlarr.Dedup(results)
 }
 
 // applyDiskGate filters NEW Prowlarr candidates against the configured

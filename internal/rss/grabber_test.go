@@ -233,6 +233,10 @@ func (f *fakeSearcher) SearchEach(_ context.Context, query, searchType string, c
 	return f.results, f.err
 }
 
+func (f *fakeSearcher) Resolve(_ context.Context, results []prowlarr.Result) []prowlarr.Result {
+	return results
+}
+
 type fakeAdder struct{ added []string }
 
 func (f *fakeAdder) EnsureAdded(_ context.Context, magnet string, _ []byte, _ torrents.Selector) (store.Torrent, error) {

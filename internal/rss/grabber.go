@@ -78,6 +78,7 @@ type Settings struct {
 // represented.
 type searcher interface {
 	SearchEach(ctx context.Context, query, searchType string, categories, indexerIDs []int, budget time.Duration) ([]prowlarr.Result, error)
+	Resolve(ctx context.Context, results []prowlarr.Result) []prowlarr.Result
 }
 
 // downloadAdder is the slice of *torrents.Service used to add a grabbed
@@ -188,11 +189,14 @@ func (g *Grabber) Poll(ctx context.Context) error {
 	// each indexer, reusing all the normalization/magnet-synthesis in the
 	// existing client. SearchEach fans out per indexer so a slow/failing one
 	// can't blank the cycle.
-	results, err := g.newSearcher(s.ProwlarrURL, s.ProwlarrAPIKey).
-		SearchEach(ctx, "", "search", s.Categories, s.IndexerIDs, s.SearchTimeout)
+	search := g.newSearcher(s.ProwlarrURL, s.ProwlarrAPIKey)
+	results, err := search.SearchEach(ctx, "", "search", s.Categories, s.IndexerIDs, s.SearchTimeout)
 	if err != nil {
 		return fmt.Errorf("rss: fetch recent releases: %w", err)
 	}
+	// Background poll: resolving every magnet-less release up front is
+	// fine here, and selection needs every hash to skip owned torrents.
+	results = search.Resolve(ctx, results)
 
 	var used, total int64
 	if s.MaxDiskUsagePercent > 0 || s.MaxDownloadStorageBytes > 0 {

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -56,10 +57,13 @@ func TestSearch(t *testing.T) {
 		t.Errorf("indexerIds params = %v, want [3 7]", gotIndexers)
 	}
 
-	// Kept: magnet result + infohash-only (synthesized magnet). Dropped:
-	// torrent-file-only (no magnet/infohash) and usenet.
-	if len(results) != 2 {
-		t.Fatalf("want 2 results, got %d: %+v", len(results), results)
+	// Kept: magnet result, infohash-only (synthesized magnet) and the
+	// torrent-file-only release, unresolved. Dropped: usenet.
+	if len(results) != 3 {
+		t.Fatalf("want 3 results, got %d: %+v", len(results), results)
+	}
+	if third := results[2]; third.MagnetURL != "" || third.DownloadURL != "http://x/file.torrent" {
+		t.Errorf("torrent-file-only result should stay unresolved with its link, got %+v", third)
 	}
 
 	if results[0].InfoHash != hexHash {
@@ -93,7 +97,9 @@ func TestSearchTorrentFileFallback(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`[{"title":"Torrent File Only","downloadUrl":"` + "http://" + r.Host + `/file.torrent` + `","size":30,"seeders":3,"protocol":"torrent"}]`))
 	})
+	var fetches atomic.Int32
 	mux.HandleFunc("/file.torrent", func(w http.ResponseWriter, r *http.Request) {
+		fetches.Add(1)
 		if got := r.Header.Get("X-Api-Key"); got != "my-key" {
 			t.Errorf("torrent fetch X-Api-Key = %q, want my-key", got)
 		}
@@ -107,8 +113,24 @@ func TestSearchTorrentFileFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if len(results) != 1 {
-		t.Fatalf("want 1 result recovered via torrent-file fallback, got %d: %+v", len(results), results)
+	if fetches.Load() != 0 {
+		t.Fatalf("Search fetched the .torrent; it must be left to Resolve")
+	}
+	// The second copy is already held by the caller and the third has a
+	// dead link: only the first costs a fetch, the third is dropped.
+	held := results[0]
+	held.TorrentFile = torrentBytes
+	dead := results[0]
+	dead.DownloadURL = srv.URL + "/missing.torrent"
+	results = c.Resolve(context.Background(), append(results, held, dead))
+	if fetches.Load() != 1 {
+		t.Errorf(".torrent fetches = %d, want 1", fetches.Load())
+	}
+	if len(results) != 2 {
+		t.Fatalf("want 2 results recovered via torrent-file fallback, got %d: %+v", len(results), results)
+	}
+	if results[1].InfoHash != results[0].InfoHash || len(results[1].TorrentFile) == 0 {
+		t.Errorf("held .torrent not resolved locally: %+v", results[1])
 	}
 	r := results[0]
 	if r.InfoHash == "" {

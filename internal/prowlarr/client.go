@@ -20,9 +20,11 @@ import (
 
 const defaultTimeout = 30 * time.Second
 
-// Result is a normalized Prowlarr search release. Every Result returned
-// by Search has both a non-empty InfoHash and a usable MagnetURL (a bare
-// infohash is expanded into a magnet); releases with neither are dropped.
+// Result is a normalized Prowlarr search release. A Result returned by
+// Search has a non-empty InfoHash and a usable MagnetURL (a bare infohash
+// is expanded into a magnet), or, for magnet-less indexers, only a
+// DownloadURL: such a release is unresolved until passed to Resolve.
+// Releases with none of these are dropped.
 type Result struct {
 	Title     string
 	InfoHash  string // lowercase hex
@@ -33,6 +35,10 @@ type Result struct {
 	// metadata fetch, which is unreliable for private-tracker peers. Nil
 	// when the release already had a magnet/infohash.
 	TorrentFile []byte
+	// DownloadURL is the .torrent link of an unresolved release (empty
+	// MagnetURL). Resolve fetches it; it is cheap to keep but slow to
+	// fetch, since Prowlarr rate-limits grabs per indexer (~2s apart).
+	DownloadURL string
 	Size        int64
 	Seeders     int
 	Categories  []int
@@ -157,25 +163,15 @@ func (c *Client) Search(ctx context.Context, query, searchType string, categorie
 			continue // usenet or unknown — not resolvable via qBittorrent
 		}
 		res := normalize(r)
-		if res.MagnetURL == "" && r.DownloadURL != "" {
-			// Some (typically private-tracker) indexers omit magnetUrl and
-			// infoHash and only publish a .torrent download link. Fetch it
-			// and derive the hash ourselves rather than dropping the
-			// release outright.
-			if hash, name, trackers, raw, err := c.fetchTorrentHash(ctx, r.DownloadURL); err == nil {
-				res.InfoHash = hash
-				if res.Title == "" {
-					res.Title = name
-				}
-				res.MagnetURL = synthesizeMagnet(hash, res.Title, trackers)
-				// Keep the raw .torrent so the play flow can add it
-				// directly (skipping qBittorrent's unreliable metadata
-				// fetch); the magnet above is the fallback.
-				res.TorrentFile = raw
-			}
-		}
 		if res.MagnetURL == "" {
-			continue // no magnet and no infohash — cannot resolve-on-play
+			// Some (typically private-tracker) indexers omit magnetUrl and
+			// infoHash and only publish a .torrent download link. Keep the
+			// link; Resolve fetches it once the caller has ranked and
+			// capped the results, so only kept releases cost a grab.
+			res.DownloadURL = r.DownloadURL
+		}
+		if res.MagnetURL == "" && res.DownloadURL == "" {
+			continue // no magnet, no infohash, no .torrent — cannot resolve-on-play
 		}
 		out = append(out, res)
 	}
@@ -269,39 +265,81 @@ func (c *Client) SearchEach(ctx context.Context, query, searchType string, categ
 	return out, nil
 }
 
+// Resolve completes the unresolved releases in results (see Result) by
+// deriving their infohash and magnet from the .torrent: TorrentFile when
+// the caller already holds it, else a download of DownloadURL. Downloads
+// run concurrently. Releases that cannot be resolved are dropped; order is
+// preserved.
+func (c *Client) Resolve(ctx context.Context, results []Result) []Result {
+	ok := make([]bool, len(results))
+	var wg sync.WaitGroup
+	for i := range results {
+		r := &results[i]
+		if r.MagnetURL != "" {
+			ok[i] = true
+			continue
+		}
+		wg.Go(func() {
+			raw := r.TorrentFile
+			if len(raw) == 0 {
+				var err error
+				if raw, err = c.fetchTorrent(ctx, r.DownloadURL); err != nil {
+					return
+				}
+			}
+			hash, name, trackers, err := metainfo.FromTorrent(raw)
+			if err != nil {
+				return
+			}
+			r.InfoHash = hash
+			if r.Title == "" {
+				r.Title = name
+			}
+			r.MagnetURL = synthesizeMagnet(hash, r.Title, trackers)
+			// Keep the raw .torrent so the play flow can add it directly
+			// (skipping qBittorrent's unreliable metadata fetch); the
+			// magnet above is the fallback.
+			r.TorrentFile = raw
+			ok[i] = true
+		})
+	}
+	wg.Wait()
+	out := make([]Result, 0, len(results))
+	for i, r := range results {
+		if ok[i] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // maxTorrentFileBytes bounds how much of a .torrent download we'll read;
 // legitimate .torrent files are a few KB to a few hundred KB at most.
 const maxTorrentFileBytes = 2 << 20 // 2 MiB
 
-// fetchTorrentHash downloads a .torrent file from a Prowlarr-provided
-// download link and extracts its v1 infohash, display name, and announce
-// trackers (needed so the synthesized magnet can find peers on private
-// trackers).
-func (c *Client) fetchTorrentHash(ctx context.Context, downloadURL string) (hash, name string, trackers []string, raw []byte, err error) {
+// fetchTorrent downloads a .torrent file from a Prowlarr-provided download
+// link.
+func (c *Client) fetchTorrent(ctx context.Context, downloadURL string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
-		return "", "", nil, nil, fmt.Errorf("prowlarr: build torrent request: %w", err)
+		return nil, fmt.Errorf("prowlarr: build torrent request: %w", err)
 	}
 	req.Header.Set("X-Api-Key", c.apiKey)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return "", "", nil, nil, fmt.Errorf("prowlarr: fetch torrent: %w", err)
+		return nil, fmt.Errorf("prowlarr: fetch torrent: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", "", nil, nil, fmt.Errorf("prowlarr: fetch torrent returned %d", resp.StatusCode)
+		return nil, fmt.Errorf("prowlarr: fetch torrent returned %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxTorrentFileBytes))
 	if err != nil {
-		return "", "", nil, nil, fmt.Errorf("prowlarr: read torrent body: %w", err)
+		return nil, fmt.Errorf("prowlarr: read torrent body: %w", err)
 	}
-	hash, name, trackers, err = metainfo.FromTorrent(body)
-	if err != nil {
-		return "", "", nil, nil, err
-	}
-	return hash, name, trackers, body, nil
+	return body, nil
 }
 
 // synthesizeMagnet builds a magnet URI from an infohash, optional display
