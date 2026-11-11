@@ -258,8 +258,6 @@ export const api = {
     ),
   status: () => request<Status>("GET", "/api/status"),
   torrents: () => request<Torrent[]>("GET", "/api/torrents"),
-  addMagnet: (magnet: string) =>
-    request<{ id: string; hash: string; name: string }>("POST", "/api/torrents", { magnet }),
   addTorrentFile: (file: File) => {
     const form = new FormData();
     form.append("file", file);
