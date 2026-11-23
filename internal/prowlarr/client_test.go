@@ -455,3 +455,25 @@ func indexerTitles(results []Result) []string {
 	sort.Strings(out)
 	return out
 }
+
+// With "Redirect" off Prowlarr puts its own proxy link (carrying the API
+// key) in magnetUrl. It must never become the play magnet.
+func TestNormalizeIgnoresNonMagnetMagnetURL(t *testing.T) {
+	proxy := "http://prowlarr:9696/37/download?apikey=SECRET&link=x&file=y"
+	res := normalize(apiResult{Title: "Movie 1080p", MagnetURL: proxy, InfoHash: strings.ToUpper(hexHash)})
+	if !strings.HasPrefix(res.MagnetURL, "magnet:?") {
+		t.Fatalf("MagnetURL = %q, want synthesized magnet", res.MagnetURL)
+	}
+	if strings.Contains(res.MagnetURL, "SECRET") {
+		t.Errorf("magnet leaks proxy link: %q", res.MagnetURL)
+	}
+	if res.InfoHash != hexHash {
+		t.Errorf("InfoHash = %q, want %q", res.InfoHash, hexHash)
+	}
+
+	// No infohash either: left empty so Search falls back to downloadUrl.
+	res = normalize(apiResult{Title: "Movie", MagnetURL: proxy})
+	if res.MagnetURL != "" {
+		t.Errorf("MagnetURL = %q, want empty", res.MagnetURL)
+	}
+}

@@ -419,6 +419,11 @@ func normalize(r apiResult) Result {
 	}
 	res.InfoHash = strings.ToLower(strings.TrimSpace(r.InfoHash))
 
+	// With "Redirect" off Prowlarr returns its own http proxy link (with
+	// the API key in it) here. Not a magnet: treat as absent.
+	if !strings.HasPrefix(strings.ToLower(res.MagnetURL), "magnet:") {
+		res.MagnetURL = ""
+	}
 	if res.MagnetURL != "" {
 		if hash, _, err := metainfo.FromMagnet(res.MagnetURL); err == nil {
 			res.InfoHash = hash
