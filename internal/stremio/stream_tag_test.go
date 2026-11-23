@@ -136,3 +136,31 @@ func TestStreamOrdersCachedFirst(t *testing.T) {
 		t.Errorf("downloading stream should be second, got second=%q", sr.Streams[1].Description)
 	}
 }
+
+// stremio-core aliases `title` to `description`, so a stream carrying both
+// keys fails to deserialize ("duplicate field `description`") and is
+// silently dropped by the client. Only `description` may be emitted.
+func TestStreamItemJSONHasNoTitleKey(t *testing.T) {
+	h := &Handler{}
+	res := prowlarr.Result{Title: "The Matrix 1999 1080p", InfoHash: testHash, MagnetURL: testMagnet(), Indexer: "Peerflix"}
+	items := []streamItem{
+		h.toStreamItem("http://x", movieQuery(), res, 0),
+		h.toOwnedStreamItem("http://x", movieQuery(), store.Torrent{Hash: testHash, Magnet: testMagnet()}, 1),
+	}
+	for _, item := range items {
+		raw, err := json.Marshal(item)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := m["title"]; ok {
+			t.Errorf("stream JSON must not contain title: %s", raw)
+		}
+		if _, ok := m["description"]; !ok {
+			t.Errorf("stream JSON must contain description: %s", raw)
+		}
+	}
+}
