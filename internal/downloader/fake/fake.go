@@ -27,6 +27,7 @@ type File struct {
 // directly via Server.Update.
 type Torrent struct {
 	Hash        string
+	Size        int64 // wanted size reported via TorrentInfo
 	Name        string
 	State       string
 	Progress    float64
@@ -298,6 +299,7 @@ func toTorrentInfo(t *Torrent) downloader.TorrentInfo {
 		Name:        t.Name,
 		State:       t.State,
 		Progress:    t.Progress,
+		Size:        t.Size,
 		Completed:   t.Completed,
 		DlSpeed:     t.DlSpeed,
 		NumSeeds:    t.NumSeeds,

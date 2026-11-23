@@ -62,7 +62,7 @@ func TestOwnedStreamItemTagReflectsProgress(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &Handler{}
 			tor := store.Torrent{Name: "The Matrix 1999 1080p BluRay", Hash: testHash, Magnet: testMagnet()}
-			item := h.toOwnedStreamItem("http://x", movieQuery(), tor, tt.progress)
+			item := h.toOwnedStreamItem("http://x", movieQuery(), tor, tt.progress, 0)
 			if !strings.Contains(item.Description, tt.want) {
 				t.Errorf("want tag %q, got description:\n%s", tt.want, item.Description)
 			}
@@ -145,7 +145,7 @@ func TestStreamItemJSONHasNoTitleKey(t *testing.T) {
 	res := prowlarr.Result{Title: "The Matrix 1999 1080p", InfoHash: testHash, MagnetURL: testMagnet(), Indexer: "Peerflix"}
 	items := []streamItem{
 		h.toStreamItem("http://x", movieQuery(), res, 0),
-		h.toOwnedStreamItem("http://x", movieQuery(), store.Torrent{Hash: testHash, Magnet: testMagnet()}, 1),
+		h.toOwnedStreamItem("http://x", movieQuery(), store.Torrent{Hash: testHash, Magnet: testMagnet()}, 1, 0),
 	}
 	for _, item := range items {
 		raw, err := json.Marshal(item)
@@ -162,5 +162,18 @@ func TestStreamItemJSONHasNoTitleKey(t *testing.T) {
 		if _, ok := m["description"]; !ok {
 			t.Errorf("stream JSON must contain description: %s", raw)
 		}
+	}
+}
+
+// An owned/cached entry shows the download client's size like a fresh
+// search result does; an unknown size (0) adds nothing.
+func TestOwnedStreamItemShowsSize(t *testing.T) {
+	h := &Handler{}
+	tor := store.Torrent{Hash: testHash, Magnet: testMagnet(), Name: "The.Matrix.1999.2160p"}
+	if got := h.toOwnedStreamItem("http://x", movieQuery(), tor, 1, 20<<30).Description; !strings.Contains(got, "✅ downloaded  💾 20.00 GiB") {
+		t.Errorf("missing size in %q", got)
+	}
+	if got := h.toOwnedStreamItem("http://x", movieQuery(), tor, 1, 0).Description; strings.Contains(got, "💾") {
+		t.Errorf("unknown size should print nothing: %q", got)
 	}
 }

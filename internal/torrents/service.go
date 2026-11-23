@@ -426,6 +426,22 @@ func (s *Service) linkFor(ctx context.Context, torrentID string, fileIndex int) 
 // user has already started.
 func (s *Service) LiveProgress(ctx context.Context, hashes []string) map[string]float64 {
 	out := map[string]float64{}
+	for h, st := range s.LiveStatus(ctx, hashes) {
+		out[h] = st.Progress
+	}
+	return out
+}
+
+// LiveStatus is the live state of one torrent in the download client.
+type LiveStatus struct {
+	Progress float64 // download fraction (0..1)
+	Size     int64   // wanted size in bytes; 0 when unknown
+}
+
+// LiveStatus is LiveProgress plus the torrent size, from the same single
+// client call. Same best-effort semantics.
+func (s *Service) LiveStatus(ctx context.Context, hashes []string) map[string]LiveStatus {
+	out := map[string]LiveStatus{}
 	if s == nil || s.dc == nil || len(hashes) == 0 {
 		return out
 	}
@@ -434,7 +450,7 @@ func (s *Service) LiveProgress(ctx context.Context, hashes []string) map[string]
 		return out
 	}
 	for _, t := range infos {
-		out[strings.ToLower(t.Hash)] = t.Progress
+		out[strings.ToLower(t.Hash)] = LiveStatus{Progress: t.Progress, Size: t.Size}
 	}
 	return out
 }

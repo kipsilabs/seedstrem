@@ -439,3 +439,12 @@ func TestWaitForMetadataTimeout(t *testing.T) {
 		t.Fatal("expected timeout error")
 	}
 }
+
+func TestLiveStatusReportsSize(t *testing.T) {
+	svc, fakeDC, _ := newService(t)
+	fakeDC.Put(&fake.Torrent{Hash: testHash, State: downloader.StateDownloading, Progress: 0.5, Size: 1234})
+	got := svc.LiveStatus(context.Background(), []string{testHash})[testHash]
+	if got.Progress != 0.5 || got.Size != 1234 {
+		t.Errorf("LiveStatus = %+v, want progress 0.5 size 1234", got)
+	}
+}
