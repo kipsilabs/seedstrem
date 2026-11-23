@@ -448,3 +448,39 @@ func TestLiveStatusReportsSize(t *testing.T) {
 		t.Errorf("LiveStatus = %+v, want progress 0.5 size 1234", got)
 	}
 }
+
+// #47: in full-seed mode the played file must be at priority 6, not 7.
+// libtorrent's sequential picker handles top-priority (7) pieces first in
+// rarest-first order, so a played file at 7 downloads out of order.
+func TestSelectAndLinkFullSeedUsesPriority6ForPlayedFile(t *testing.T) {
+	fakeDC := fake.New()
+	db, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	svc := New(db, fakeDC, func() Settings {
+		return Settings{MetadataTimeout: 2 * time.Second, SeedFull: true}
+	}, nil)
+
+	fakeDC.Put(&fake.Torrent{
+		Hash:  testHash,
+		State: downloader.StatePaused,
+		Files: []fake.File{{Name: "Movie.2026.1080p.mkv", Size: 8 << 30}, {Name: "extras.mkv", Size: 1 << 30}},
+	})
+	if _, err := svc.Resolve(context.Background(), testMagnet("Movie"), nil, Selector{}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	var sawSix bool
+	for _, c := range fakeDC.Calls() {
+		if strings.HasPrefix(c, "filePrio ") && strings.HasSuffix(c, "priority=7") {
+			t.Errorf("played file must not be set to priority 7: %s", c)
+		}
+		if strings.HasPrefix(c, "filePrio ") && strings.HasSuffix(c, "priority=6") {
+			sawSix = true
+		}
+	}
+	if !sawSix {
+		t.Errorf("expected played file at priority 6: calls=%v", fakeDC.Calls())
+	}
+}
