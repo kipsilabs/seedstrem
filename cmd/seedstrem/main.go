@@ -160,6 +160,10 @@ func run() error {
 			TargetRatio:      c.Cleanup.TargetRatio,
 			DeletePolicy:     c.Cleanup.DeletePolicy,
 			IndexerSeedTimes: c.Cleanup.IndexerSeedTimes,
+
+			DiskPressurePercent:  c.Cleanup.DiskPressurePercent,
+			DiskPressureSeedTime: c.Cleanup.DiskPressureSeedTime,
+			DiskPath:             firstLocalMapping(c.Paths.Mappings),
 		}
 	}, logger, 30*time.Minute).Run(cleanCtx)
 

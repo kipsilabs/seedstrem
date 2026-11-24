@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kipsilabs/seedstrem/internal/config"
+	"github.com/kipsilabs/seedstrem/internal/diskusage"
 	"github.com/kipsilabs/seedstrem/internal/downloader"
 	"github.com/kipsilabs/seedstrem/internal/playsession"
 	"github.com/kipsilabs/seedstrem/internal/store"
@@ -33,6 +34,16 @@ type Settings struct {
 	// IndexerSeedTimes overrides SeedTime per Prowlarr indexer name,
 	// matched case-insensitively against store.Torrent.Indexer.
 	IndexerSeedTimes map[string]time.Duration
+	// DiskPressurePercent, DiskPressureSeedTime: see config.Cleanup. DiskPath
+	// is the local download directory whose filesystem is measured.
+	DiskPressurePercent  int
+	DiskPressureSeedTime time.Duration
+	DiskPath             string
+}
+
+// pressureEnabled reports whether the disk-pressure pass can run.
+func (s Settings) pressureEnabled() bool {
+	return s.DiskPressurePercent > 0 && s.DiskPressureSeedTime > 0 && s.DiskPath != ""
 }
 
 // EffectiveSeedTime returns the seed time governing a torrent grabbed from
@@ -52,6 +63,9 @@ type Cleanup struct {
 	settings func() Settings
 	logger   *slog.Logger
 	interval time.Duration
+	// diskUsage measures the download disk (used, total bytes); a field so
+	// tests can fake it.
+	diskUsage func(path string) (used, total int64, err error)
 }
 
 // New creates a Cleanup. sessions is consulted before removing a
@@ -64,7 +78,8 @@ func New(st *store.Store, dc downloader.Client, svc *torrents.Service, sessions 
 	if interval <= 0 {
 		interval = 30 * time.Minute
 	}
-	return &Cleanup{store: st, dc: dc, svc: svc, sessions: sessions, settings: settings, logger: logger, interval: interval}
+	return &Cleanup{store: st, dc: dc, svc: svc, sessions: sessions, settings: settings, logger: logger, interval: interval,
+		diskUsage: diskusage.Stat}
 }
 
 // Run loops until ctx is cancelled.
@@ -90,7 +105,7 @@ func (c *Cleanup) Sweep(ctx context.Context) error {
 	s := c.settings()
 	// Nothing to do when both removal triggers are disabled. A global
 	// seed time of 0 still sweeps when some indexer overrides it upward.
-	if !config.HasSeedTimeTrigger(s.SeedTime, s.IndexerSeedTimes) && s.TargetRatio <= 0 {
+	if !config.HasSeedTimeTrigger(s.SeedTime, s.IndexerSeedTimes) && s.TargetRatio <= 0 && !s.pressureEnabled() {
 		return nil
 	}
 
@@ -115,6 +130,7 @@ func (c *Cleanup) Sweep(ctx context.Context) error {
 		live[strings.ToLower(t.Hash)] = t
 	}
 
+	removed := make(map[string]bool)
 	for _, tor := range selectRemovals(stored, live, s) {
 		info := live[tor.Hash]
 		done, ok := c.sessions.BeginRemoval(tor.Hash)
@@ -129,10 +145,91 @@ func (c *Cleanup) Sweep(ctx context.Context) error {
 			"ratio", info.Ratio, "uploaded", info.Uploaded, "policy", s.DeletePolicy)
 		if err := c.svc.Remove(ctx, tor, deletionEvent(info, s, tor.Indexer)); err != nil {
 			c.logger.Warn("cleanup: remove torrent", "id", tor.ID, "hash", tor.Hash, "error", err)
+		} else {
+			removed[tor.Hash] = true
 		}
 		done()
 	}
+	if s.pressureEnabled() {
+		c.relievePressure(ctx, stored, live, s, removed)
+	}
 	return nil
+}
+
+// relievePressure removes completed torrents that have seeded at least
+// DiskPressureSeedTime, in DeletePolicy order, while the download disk is
+// at or above DiskPressurePercent. Freed space is estimated from each
+// torrent's on-disk bytes (the client deletes files asynchronously), so a
+// pass stops once enough is queued; the next sweep measures again.
+func (c *Cleanup) relievePressure(ctx context.Context, stored []store.Torrent, live map[string]downloader.TorrentInfo, s Settings, removed map[string]bool) {
+	used, total, err := c.diskUsage(s.DiskPath)
+	if err != nil || total <= 0 {
+		c.logger.Warn("cleanup: disk usage check failed; skipping disk-pressure pass", "path", s.DiskPath, "error", err)
+		return
+	}
+	limit := total * int64(s.DiskPressurePercent) / 100
+	if used < limit {
+		return
+	}
+	candidates := selectPressureRemovals(stored, live, s, removed)
+	c.logger.Info("cleanup: download disk over pressure threshold",
+		"used", used, "total", total, "percent", s.DiskPressurePercent, "candidates", len(candidates))
+	for _, tor := range candidates {
+		if used < limit {
+			break
+		}
+		info := live[tor.Hash]
+		done, ok := c.sessions.BeginRemoval(tor.Hash)
+		if !ok {
+			c.logger.Debug("cleanup: skipping disk-pressure candidate, currently being watched", "id", tor.ID, "hash", tor.Hash)
+			continue
+		}
+		c.logger.Info("cleanup: removing torrent to free disk space",
+			"id", tor.ID, "hash", tor.Hash, "seedingTime", info.SeedingTime,
+			"minSeedTime", s.DiskPressureSeedTime, "indexer", tor.Indexer,
+			"ratio", info.Ratio, "bytes", info.Completed, "policy", s.DeletePolicy)
+		if err := c.svc.Remove(ctx, tor, pressureEvent(info, s)); err != nil {
+			c.logger.Warn("cleanup: remove torrent", "id", tor.ID, "hash", tor.Hash, "error", err)
+		} else {
+			used -= info.Completed
+		}
+		done()
+	}
+	if used >= limit {
+		c.logger.Warn("cleanup: download disk still over pressure threshold; nothing else has seeded long enough",
+			"used", used, "limit", limit, "minSeedTime", s.DiskPressureSeedTime)
+	}
+}
+
+// selectPressureRemovals returns the torrents disk pressure may remove, in
+// DeletePolicy order: finished downloading, seeded at least
+// DiskPressureSeedTime, and not already removed by this sweep.
+func selectPressureRemovals(stored []store.Torrent, live map[string]downloader.TorrentInfo, s Settings, removed map[string]bool) []store.Torrent {
+	eligible := make([]store.Torrent, 0, len(stored))
+	for _, tor := range stored {
+		if removed[tor.Hash] {
+			continue
+		}
+		info, ok := live[tor.Hash]
+		if !ok || info.Progress < 1 || info.SeedingTime < s.DiskPressureSeedTime {
+			continue
+		}
+		eligible = append(eligible, tor)
+	}
+	orderRemovals(eligible, live, s.DeletePolicy)
+	return eligible
+}
+
+// pressureEvent builds the audit record for a disk-pressure removal: the
+// seeding time against the disk-pressure minimum that allowed it.
+func pressureEvent(info downloader.TorrentInfo, s Settings) store.DeletionEvent {
+	return store.DeletionEvent{
+		Reason:      store.DeleteReasonDiskPressure,
+		SeedingTime: info.SeedingTime,
+		SeedLimit:   s.DiskPressureSeedTime,
+		Ratio:       info.Ratio,
+		Progress:    info.Progress,
+	}
 }
 
 // deletionEvent builds the audit record for a cleanup removal. Both
