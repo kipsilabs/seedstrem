@@ -24,7 +24,8 @@ jobs:
   # Deluge only loads eggs whose py3.X suffix matches the daemon's
   # interpreter, so build one egg per Python version users may run.
   build:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest (26.04) has no prebuilt Python 3.9 for setup-python.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
