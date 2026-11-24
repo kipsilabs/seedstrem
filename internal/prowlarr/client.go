@@ -31,7 +31,7 @@ type Result struct {
 	// resolved by downloading a .torrent (magnet-less indexers, typical of
 	// private trackers). Adding these directly skips qBittorrent's
 	// metadata fetch, which is unreliable for private-tracker peers. Nil
-	// when the release already had a magnet/infohash.
+	// when the release already had a magnet or the file was not fetched.
 	TorrentFile []byte
 	Size        int64
 	Seeders     int
@@ -157,11 +157,11 @@ func (c *Client) Search(ctx context.Context, query, searchType string, categorie
 			continue // usenet or unknown — not resolvable via qBittorrent
 		}
 		res := normalize(r)
-		if res.MagnetURL == "" && r.DownloadURL != "" {
-			// Some (typically private-tracker) indexers omit magnetUrl and
-			// infoHash and only publish a .torrent download link. Fetch it
-			// and derive the hash ourselves rather than dropping the
-			// release outright.
+		if r.MagnetURL == "" && r.DownloadURL != "" {
+			// Fetch the original .torrent when the indexer provides no magnet,
+			// even if normalize synthesized one from an infohash. That magnet
+			// has no trackers; the file preserves authenticated announce URLs
+			// and private metadata for either download client.
 			if hash, name, trackers, raw, err := c.fetchTorrentHash(ctx, r.DownloadURL); err == nil {
 				res.InfoHash = hash
 				if res.Title == "" {
@@ -425,7 +425,7 @@ func normalize(r apiResult) Result {
 		}
 	}
 	if res.MagnetURL == "" && res.InfoHash != "" {
-		// infoHash-only result: no .torrent to read trackers from.
+		// Hash-only fallback; Search may still fetch a provided .torrent.
 		res.MagnetURL = synthesizeMagnet(res.InfoHash, r.Title, nil)
 	}
 	return res
