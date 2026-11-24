@@ -192,7 +192,7 @@ func (h *Handler) discoverySearch(ctx context.Context, q meta.Query, s Settings)
 	}
 	identity := fmt.Sprintf("%s:%s:%d:%d:%d", q.Source, q.ID, q.Kind, q.Season, q.Episode)
 	key := searchCacheKey(s.Prowlarr.URL, identity, "discovery", categories, s.Prowlarr.IndexerIDs)
-	results, _, err := h.searchCache.do(key, s.Prowlarr.SearchCacheTTL, func() ([]prowlarr.Result, error) {
+	search := func(ctx context.Context) ([]prowlarr.Result, error) {
 		var results []prowlarr.Result
 		switch {
 		case q.IsAnime():
@@ -243,6 +243,12 @@ func (h *Handler) discoverySearch(ctx context.Context, q meta.Query, s Settings)
 		}
 
 		return results, nil
+	}
+	if s.Prowlarr.QuickTimeout > 0 {
+		return h.progressiveSearch(ctx, key, s, search)
+	}
+	results, _, err := h.searchCache.do(key, s.Prowlarr.SearchCacheTTL, func() ([]prowlarr.Result, error) {
+		return search(ctx)
 	})
 	return slices.Clone(results), err
 }

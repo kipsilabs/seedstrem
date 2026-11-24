@@ -74,6 +74,11 @@ prowlarr:
   # 0 disables caching (every request searches live). Override with
   # PROWLARR_SEARCH_CACHE_TTL.
   search_cache_ttl: 5m
+  # Progressive search: wait at most this long for a fresh search, answer
+  # with the results found so far, and let the search finish in the
+  # background (up to search_timeout) so the next request gets them all.
+  # 0 (default) waits for the whole search.
+  quick_timeout: 0s
 
 addon:
   # Which content types the Stremio addon serves.

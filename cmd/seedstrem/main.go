@@ -114,6 +114,7 @@ func run() error {
 				IndexerIDs:      c.Prowlarr.IndexerIDs,
 				SearchTimeout:   c.Prowlarr.SearchTimeout,
 				SearchCacheTTL:  c.Prowlarr.SearchCacheTTL,
+				QuickTimeout:    c.Prowlarr.QuickTimeout,
 			},
 			Addon: stremio.AddonSettings{
 				EnableMovies: c.Addon.EnableMovies,

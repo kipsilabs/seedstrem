@@ -176,6 +176,7 @@ func (c *Client) resolveTorrents(ctx context.Context, raw []apiResult) []Result 
 		if r.DownloadURL == "" {
 			if res.MagnetURL != "" {
 				slots[i] = &res
+				Report(ctx, res)
 			}
 			continue
 		}
@@ -194,6 +195,7 @@ func (c *Client) resolveTorrents(ctx context.Context, raw []apiResult) []Result 
 			}
 			if res.MagnetURL != "" {
 				slots[i] = &res
+				Report(ctx, res)
 			}
 		}(i, r, res)
 	}

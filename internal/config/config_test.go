@@ -404,6 +404,18 @@ func TestClientLabelFollowsDownloaderType(t *testing.T) {
 	}
 }
 
+func TestValidateQuickTimeout(t *testing.T) {
+	c := Default()
+	c.Prowlarr.QuickTimeout = 5 * time.Second
+	if err := c.Validate(); err != nil {
+		t.Errorf("quick_timeout 5s should be valid: %v", err)
+	}
+	c.Prowlarr.QuickTimeout = -time.Second
+	if err := c.Validate(); err == nil {
+		t.Error("a negative quick_timeout should be rejected")
+	}
+}
+
 func TestValidateDiskPressure(t *testing.T) {
 	base := Default()
 	if err := base.Validate(); err != nil {
