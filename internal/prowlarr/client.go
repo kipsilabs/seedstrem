@@ -151,35 +151,60 @@ func (c *Client) Search(ctx context.Context, query, searchType string, categorie
 		return nil, fmt.Errorf("prowlarr: decode response: %w", err)
 	}
 
-	out := make([]Result, 0, len(raw))
-	for _, r := range raw {
+	return c.resolveTorrents(ctx, raw), nil
+}
+
+// maxTorrentFetches bounds concurrent .torrent downloads per search.
+const maxTorrentFetches = 8
+
+// resolveTorrents turns raw results into Results, preferring the original
+// .torrent file whenever the indexer publishes a downloadUrl. A magnet (or an
+// infohash-only synthesized one) carries no passkeyed tracker list, so
+// private-tracker torrents added that way stall with no trackers. Results
+// with no downloadUrl, or whose .torrent can't be fetched, keep whatever
+// magnet normalize produced; results with neither are dropped. Order is
+// preserved.
+func (c *Client) resolveTorrents(ctx context.Context, raw []apiResult) []Result {
+	slots := make([]*Result, len(raw))
+	sem := make(chan struct{}, maxTorrentFetches)
+	var wg sync.WaitGroup
+	for i, r := range raw {
 		if r.Protocol != "" && r.Protocol != "torrent" {
-			continue // usenet or unknown — not resolvable via qBittorrent
+			continue // usenet or unknown — not resolvable via the download client
 		}
 		res := normalize(r)
-		if res.MagnetURL == "" && r.DownloadURL != "" {
-			// Some (typically private-tracker) indexers omit magnetUrl and
-			// infoHash and only publish a .torrent download link. Fetch it
-			// and derive the hash ourselves rather than dropping the
-			// release outright.
-			if hash, name, trackers, raw, err := c.fetchTorrentHash(ctx, r.DownloadURL); err == nil {
+		if r.DownloadURL == "" {
+			if res.MagnetURL != "" {
+				slots[i] = &res
+			}
+			continue
+		}
+		wg.Add(1)
+		go func(i int, r apiResult, res Result) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if hash, name, trackers, body, err := c.fetchTorrentHash(ctx, r.DownloadURL); err == nil {
 				res.InfoHash = hash
 				if res.Title == "" {
 					res.Title = name
 				}
 				res.MagnetURL = synthesizeMagnet(hash, res.Title, trackers)
-				// Keep the raw .torrent so the play flow can add it
-				// directly (skipping qBittorrent's unreliable metadata
-				// fetch); the magnet above is the fallback.
-				res.TorrentFile = raw
+				res.TorrentFile = body
 			}
-		}
-		if res.MagnetURL == "" {
-			continue // no magnet and no infohash — cannot resolve-on-play
-		}
-		out = append(out, res)
+			if res.MagnetURL != "" {
+				slots[i] = &res
+			}
+		}(i, r, res)
 	}
-	return out, nil
+	wg.Wait()
+	out := make([]Result, 0, len(raw))
+	for _, res := range slots {
+		if res != nil {
+			out = append(out, *res)
+		}
+	}
+	return out
 }
 
 // SearchEach runs query as one search per indexer concurrently and returns
@@ -419,6 +444,11 @@ func normalize(r apiResult) Result {
 	}
 	res.InfoHash = strings.ToLower(strings.TrimSpace(r.InfoHash))
 
+	// With "Redirect" off Prowlarr returns its own http proxy link (with
+	// the API key in it) here. Not a magnet: treat as absent.
+	if !strings.HasPrefix(strings.ToLower(res.MagnetURL), "magnet:") {
+		res.MagnetURL = ""
+	}
 	if res.MagnetURL != "" {
 		if hash, _, err := metainfo.FromMagnet(res.MagnetURL); err == nil {
 			res.InfoHash = hash

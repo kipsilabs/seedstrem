@@ -240,13 +240,17 @@ func (s *Service) SelectAndLink(ctx context.Context, tor store.Torrent, fileInde
 	}
 
 	// qBittorrent file priorities: 0 = do not download, 1 = normal,
-	// 7 = maximum. In full-seed mode the other files stay at normal so the
-	// whole torrent downloads (for ratio) while the played file is boosted
-	// to maximum so it downloads first for streaming. Otherwise the other
-	// files are skipped entirely and only the played file is fetched.
+	// 6 = high, 7 = maximum. In full-seed mode the other files stay at normal
+	// so the whole torrent downloads (for ratio) while the played file is
+	// boosted so it downloads first for streaming. 6, not 7: libtorrent's
+	// sequential picker takes every top-priority (7) piece first in
+	// rarest-first order, so a played file at 7 downloads randomly. At 6 it
+	// goes in order, and the first/last pieces (boosted to 7) still come
+	// first. Otherwise the other files are skipped entirely and only the
+	// played file is fetched.
 	otherPrio, selectedPrio := 0, 1
 	if s.settings().SeedFull {
-		otherPrio, selectedPrio = 1, 7
+		otherPrio, selectedPrio = 1, 6
 	}
 	if err := s.dc.SetFilePriority(ctx, tor.Hash, unselectedIdx, otherPrio); err != nil {
 		return store.Link{}, fmt.Errorf("set other files priority: %w", err)
@@ -426,6 +430,22 @@ func (s *Service) linkFor(ctx context.Context, torrentID string, fileIndex int) 
 // user has already started.
 func (s *Service) LiveProgress(ctx context.Context, hashes []string) map[string]float64 {
 	out := map[string]float64{}
+	for h, st := range s.LiveStatus(ctx, hashes) {
+		out[h] = st.Progress
+	}
+	return out
+}
+
+// LiveStatus is the live state of one torrent in the download client.
+type LiveStatus struct {
+	Progress float64 // download fraction (0..1)
+	Size     int64   // wanted size in bytes; 0 when unknown
+}
+
+// LiveStatus is LiveProgress plus the torrent size, from the same single
+// client call. Same best-effort semantics.
+func (s *Service) LiveStatus(ctx context.Context, hashes []string) map[string]LiveStatus {
+	out := map[string]LiveStatus{}
 	if s == nil || s.dc == nil || len(hashes) == 0 {
 		return out
 	}
@@ -434,7 +454,7 @@ func (s *Service) LiveProgress(ctx context.Context, hashes []string) map[string]
 		return out
 	}
 	for _, t := range infos {
-		out[strings.ToLower(t.Hash)] = t.Progress
+		out[strings.ToLower(t.Hash)] = LiveStatus{Progress: t.Progress, Size: t.Size}
 	}
 	return out
 }

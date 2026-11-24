@@ -521,3 +521,34 @@ func TestTorrentsExposesOrigin(t *testing.T) {
 		t.Fatalf("origin = %q, want %q", items[0].Origin, store.OriginAdopted)
 	}
 }
+
+// After a save the UI blanks the password field, so a test with an empty
+// password must fall back to the stored one (like the mask does).
+func TestTestQbittorrentEmptyPasswordUsesStored(t *testing.T) {
+	var got atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/auth/login" {
+			r.ParseForm()
+			got.Store(r.PostForm.Get("password"))
+		}
+		w.Write([]byte("Fails."))
+	}))
+	defer srv.Close()
+
+	e := newEnv(t)
+	e.login(t)
+	cfg := e.config.Get()
+	cfg.QBittorrent.Password = "stored-pw"
+	if err := e.config.Update(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, pw := range []string{"", passwordMask} {
+		got.Store("")
+		body := `{"url":"` + srv.URL + `","username":"u","password":"` + pw + `"}`
+		e.do(t, http.MethodPost, "/config/test-qbittorrent", body)
+		if g, _ := got.Load().(string); g != "stored-pw" {
+			t.Errorf("password %q: login used %q, want stored-pw", pw, g)
+		}
+	}
+}

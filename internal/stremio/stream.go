@@ -20,9 +20,10 @@ import (
 
 // streamItem is one entry in a Stremio stream response.
 type streamItem struct {
-	Name          string         `json:"name"`
-	Title         string         `json:"title"`                 // deprecated by Stremio; kept for back-compat
-	Description   string         `json:"description,omitempty"` // Stremio-preferred; AIOStreams reads it
+	Name string `json:"name"`
+	// Description only: stremio-core aliases `title` to `description`, so
+	// emitting both makes the client drop the stream as a duplicate field.
+	Description   string         `json:"description,omitempty"`
 	URL           string         `json:"url"`
 	BehaviorHints map[string]any `json:"behaviorHints,omitempty"`
 }
@@ -115,7 +116,11 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	for _, t := range owned {
 		hashes = append(hashes, t.Hash)
 	}
-	progress := h.svc.LiveProgress(ctx, hashes)
+	live := h.svc.LiveStatus(ctx, hashes)
+	progress := make(map[string]float64, len(live))
+	for hash, st := range live {
+		progress[hash] = st.Progress
+	}
 
 	// Cache-first: a Prowlarr result we already have downloaded — even one
 	// grabbed in the background without a matching content id (RSS poller) —
@@ -140,7 +145,7 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	ready := make([]readyStream, 0, len(owned)+len(results))
 	for _, t := range owned {
 		p := progress[strings.ToLower(t.Hash)]
-		ready = append(ready, readyStream{h.toOwnedStreamItem(s.ExternalURL, q, t, p), p})
+		ready = append(ready, readyStream{h.toOwnedStreamItem(s.ExternalURL, q, t, p, live[strings.ToLower(t.Hash)].Size), p})
 	}
 	fresh := make([]prowlarr.Result, 0, len(results))
 	for _, res := range results {
@@ -153,7 +158,7 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		// and order it ahead of the fresh candidates below.
 		if tor, ok := cached[lh]; ok {
 			p := progress[lh]
-			ready = append(ready, readyStream{h.toOwnedStreamItem(s.ExternalURL, q, tor, p), p})
+			ready = append(ready, readyStream{h.toOwnedStreamItem(s.ExternalURL, q, tor, p, live[lh].Size), p})
 			ownedHashes[lh] = struct{}{}
 			continue
 		}
@@ -631,7 +636,6 @@ func (h *Handler) toStreamItem(externalURL string, q meta.Query, res prowlarr.Re
 	}
 	return streamItem{
 		Name:          name,
-		Title:         detail,
 		Description:   detail,
 		URL:           playURL,
 		BehaviorHints: hints,
@@ -655,7 +659,7 @@ func setContentIdentity(v url.Values, q meta.Query) {
 // already added for this content. It points at the same resolve-on-play
 // endpoint (reusing the stored magnet), and its title flags the download
 // state so it stands out above the Prowlarr fallback results.
-func (h *Handler) toOwnedStreamItem(externalURL string, q meta.Query, tor store.Torrent, progress float64) streamItem {
+func (h *Handler) toOwnedStreamItem(externalURL string, q meta.Query, tor store.Torrent, progress float64, size int64) streamItem {
 	base := strings.TrimSuffix(externalURL, "/")
 	v := url.Values{}
 	v.Set("magnet", tor.Magnet)
@@ -686,6 +690,9 @@ func (h *Handler) toOwnedStreamItem(externalURL string, q meta.Query, tor store.
 		detail += "\n" + summary
 	}
 	detail += "\n⚡ " + status
+	if size > 0 {
+		detail += "  💾 " + humanSize(size)
+	}
 	// AIOStreams-visible tag: readiness rides as a plain-text qualifier
 	// (cached / NN% / queued) since AIOStreams drops our custom name.
 	tag := "queued"
@@ -703,7 +710,6 @@ func (h *Handler) toOwnedStreamItem(externalURL string, q meta.Query, tor store.
 	}
 	return streamItem{
 		Name:          name,
-		Title:         detail,
 		Description:   detail,
 		URL:           playURL,
 		BehaviorHints: hints,

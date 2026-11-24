@@ -61,7 +61,7 @@ func TestStreamItemWithoutIndexerOmitsParam(t *testing.T) {
 func TestOwnedStreamItemPlayURLCarriesStoredIndexer(t *testing.T) {
 	h := &Handler{}
 	tor := store.Torrent{Hash: testHash, Magnet: testMagnet(), Indexer: "TorrentLeech"}
-	item := h.toOwnedStreamItem("http://x", movieQuery(), tor, 1)
+	item := h.toOwnedStreamItem("http://x", movieQuery(), tor, 1, 0)
 	if got := playURLIndexer(t, item.URL); got != "TorrentLeech" {
 		t.Errorf("owned play url ix = %q, want %q (url: %s)", got, "TorrentLeech", item.URL)
 	}
@@ -70,7 +70,7 @@ func TestOwnedStreamItemPlayURLCarriesStoredIndexer(t *testing.T) {
 func TestOwnedStreamItemWithoutIndexerOmitsParam(t *testing.T) {
 	h := &Handler{}
 	tor := store.Torrent{Hash: testHash, Magnet: testMagnet()}
-	item := h.toOwnedStreamItem("http://x", movieQuery(), tor, 1)
+	item := h.toOwnedStreamItem("http://x", movieQuery(), tor, 1, 0)
 	if got := playURLIndexer(t, item.URL); got != "" {
 		t.Errorf("owned play url ix = %q, want empty (url: %s)", got, item.URL)
 	}

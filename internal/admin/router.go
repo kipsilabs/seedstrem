@@ -524,7 +524,7 @@ func (h *Handler) testQbittorrent(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if body.Password == passwordMask {
+	if body.Password == passwordMask || body.Password == "" {
 		body.Password = h.config.Get().QBittorrent.Password
 	}
 
@@ -551,7 +551,7 @@ func (h *Handler) testDeluge(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if body.Password == passwordMask {
+	if body.Password == passwordMask || body.Password == "" {
 		body.Password = h.config.Get().Deluge.Password
 	}
 

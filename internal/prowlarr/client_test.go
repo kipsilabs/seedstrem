@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -454,4 +455,71 @@ func indexerTitles(results []Result) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// With "Redirect" off Prowlarr puts its own proxy link (carrying the API
+// key) in magnetUrl. It must never become the play magnet.
+func TestNormalizeIgnoresNonMagnetMagnetURL(t *testing.T) {
+	proxy := "http://prowlarr:9696/37/download?apikey=SECRET&link=x&file=y"
+	res := normalize(apiResult{Title: "Movie 1080p", MagnetURL: proxy, InfoHash: strings.ToUpper(hexHash)})
+	if !strings.HasPrefix(res.MagnetURL, "magnet:?") {
+		t.Fatalf("MagnetURL = %q, want synthesized magnet", res.MagnetURL)
+	}
+	if strings.Contains(res.MagnetURL, "SECRET") {
+		t.Errorf("magnet leaks proxy link: %q", res.MagnetURL)
+	}
+	if res.InfoHash != hexHash {
+		t.Errorf("InfoHash = %q, want %q", res.InfoHash, hexHash)
+	}
+
+	// No infohash either: left empty so Search falls back to downloadUrl.
+	res = normalize(apiResult{Title: "Movie", MagnetURL: proxy})
+	if res.MagnetURL != "" {
+		t.Errorf("MagnetURL = %q, want empty", res.MagnetURL)
+	}
+}
+
+// #56: when a result has both an infoHash and a downloadUrl (no magnet), the
+// .torrent must be fetched so its trackers survive; a trackerless synthesized
+// magnet stalls private-tracker torrents.
+func TestSearchPrefersTorrentFileOverInfohash(t *testing.T) {
+	const tracker = "http://tr.example/announce?passkey=abc"
+	torrentBytes := []byte("d8:announce" + strconv.Itoa(len(tracker)) + ":" + tracker + "4:infod4:name4:testee")
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"title":"Private","infoHash":"` + hexHash + `","downloadUrl":"http://` + r.Host + `/file.torrent","protocol":"torrent"}]`))
+	})
+	mux.HandleFunc("/file.torrent", func(w http.ResponseWriter, _ *http.Request) { w.Write(torrentBytes) })
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := NewWithClient(srv.URL, "k", srv.Client())
+	results, err := c.Search(context.Background(), "q", "", nil, nil)
+	if err != nil || len(results) != 1 {
+		t.Fatalf("search: err=%v results=%+v", err, results)
+	}
+	if len(results[0].TorrentFile) == 0 {
+		t.Error("expected raw .torrent to be kept")
+	}
+	mu, _ := url.Parse(results[0].MagnetURL)
+	if got := mu.Query()["tr"]; len(got) != 1 || got[0] != tracker {
+		t.Errorf("magnet trackers = %v; want [%s]", got, tracker)
+	}
+}
+
+// A failed .torrent fetch must not drop a result that still has a usable magnet.
+func TestSearchTorrentFetchFailureKeepsMagnet(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"title":"X","infoHash":"` + hexHash + `","downloadUrl":"http://` + r.Host + `/missing.torrent","protocol":"torrent"}]`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := NewWithClient(srv.URL, "k", srv.Client())
+	results, err := c.Search(context.Background(), "q", "", nil, nil)
+	if err != nil || len(results) != 1 || results[0].InfoHash != hexHash {
+		t.Fatalf("want magnet fallback, err=%v results=%+v", err, results)
+	}
 }

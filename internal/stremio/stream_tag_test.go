@@ -62,7 +62,7 @@ func TestOwnedStreamItemTagReflectsProgress(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &Handler{}
 			tor := store.Torrent{Name: "The Matrix 1999 1080p BluRay", Hash: testHash, Magnet: testMagnet()}
-			item := h.toOwnedStreamItem("http://x", movieQuery(), tor, tt.progress)
+			item := h.toOwnedStreamItem("http://x", movieQuery(), tor, tt.progress, 0)
 			if !strings.Contains(item.Description, tt.want) {
 				t.Errorf("want tag %q, got description:\n%s", tt.want, item.Description)
 			}
@@ -134,5 +134,46 @@ func TestStreamOrdersCachedFirst(t *testing.T) {
 	}
 	if !strings.Contains(sr.Streams[1].Description, "· 30%") {
 		t.Errorf("downloading stream should be second, got second=%q", sr.Streams[1].Description)
+	}
+}
+
+// stremio-core aliases `title` to `description`, so a stream carrying both
+// keys fails to deserialize ("duplicate field `description`") and is
+// silently dropped by the client. Only `description` may be emitted.
+func TestStreamItemJSONHasNoTitleKey(t *testing.T) {
+	h := &Handler{}
+	res := prowlarr.Result{Title: "The Matrix 1999 1080p", InfoHash: testHash, MagnetURL: testMagnet(), Indexer: "Peerflix"}
+	items := []streamItem{
+		h.toStreamItem("http://x", movieQuery(), res, 0),
+		h.toOwnedStreamItem("http://x", movieQuery(), store.Torrent{Hash: testHash, Magnet: testMagnet()}, 1, 0),
+	}
+	for _, item := range items {
+		raw, err := json.Marshal(item)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := m["title"]; ok {
+			t.Errorf("stream JSON must not contain title: %s", raw)
+		}
+		if _, ok := m["description"]; !ok {
+			t.Errorf("stream JSON must contain description: %s", raw)
+		}
+	}
+}
+
+// An owned/cached entry shows the download client's size like a fresh
+// search result does; an unknown size (0) adds nothing.
+func TestOwnedStreamItemShowsSize(t *testing.T) {
+	h := &Handler{}
+	tor := store.Torrent{Hash: testHash, Magnet: testMagnet(), Name: "The.Matrix.1999.2160p"}
+	if got := h.toOwnedStreamItem("http://x", movieQuery(), tor, 1, 20<<30).Description; !strings.Contains(got, "✅ downloaded  💾 20.00 GiB") {
+		t.Errorf("missing size in %q", got)
+	}
+	if got := h.toOwnedStreamItem("http://x", movieQuery(), tor, 1, 0).Description; strings.Contains(got, "💾") {
+		t.Errorf("unknown size should print nothing: %q", got)
 	}
 }
