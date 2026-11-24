@@ -21,6 +21,10 @@ const (
 	DeleteReasonRatio = "ratio"
 	// DeleteReasonManual: removed from the admin UI.
 	DeleteReasonManual = "manual"
+	// DeleteReasonDiskPressure: the cleanup sweep removed a torrent that had
+	// seeded past the disk-pressure minimum while the download disk was at
+	// or above cleanup.disk_pressure_percent.
+	DeleteReasonDiskPressure = "disk_pressure"
 	// DeleteReasonAbandoned: a stream was abandoned below the progress
 	// threshold with nobody watching.
 	DeleteReasonAbandoned = "abandoned"

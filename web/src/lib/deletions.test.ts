@@ -30,6 +30,12 @@ describe("deletionEvidence", () => {
     expect(deletionEvidence(d)).toBe("seeded 49h of 48h");
   });
 
+  it("shows seeding time against the disk-pressure minimum", () => {
+    const d = make({ reason: "disk_pressure", seeding_time: 52 * 3600, seed_limit: 48 * 3600 });
+    expect(deletionEvidence(d)).toBe("seeded 52h (min 48h), disk full");
+    expect(deletionReasonLabel("disk_pressure")).toBe("Disk space");
+  });
+
   it("shows the ratio against the target", () => {
     const d = make({ reason: "ratio", ratio: 2.5, ratio_limit: 2 });
     expect(deletionEvidence(d)).toBe("ratio 2.50 of 2.00");

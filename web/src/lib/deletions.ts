@@ -6,6 +6,7 @@ const REASON_LABELS: Record<string, string> = {
   seed_time: "Seed time",
   ratio: "Ratio",
   manual: "Manual",
+  disk_pressure: "Disk space",
   abandoned: "Abandoned",
   unadopted: "Un-adopted",
 };
@@ -23,6 +24,8 @@ export function deletionReasonClass(reason: string): string {
       return "badge-success";
     case "manual":
       return "badge-ghost";
+    case "disk_pressure":
+      return "badge-warning";
     case "abandoned":
       return "badge-warning";
     case "unadopted":
@@ -53,6 +56,8 @@ export function deletionEvidence(d: Deletion): string {
       return `progress ${percent(d.progress)} of ${percent(d.progress_limit)}`;
     case "manual":
       return "removed from the admin UI";
+    case "disk_pressure":
+      return `seeded ${hours(d.seeding_time)} (min ${hours(d.seed_limit)}), disk full`;
     case "unadopted":
       return "label disappeared — still in client";
     default:
