@@ -154,6 +154,12 @@ cleanup:
   # .torrent files, so they can be re-added (e.g. after a tracker rule
   # change). Older entries and files are deleted automatically.
   history_retention: 720h
+  # Disk pressure: once the download disk is this full (percent), torrents
+  # that have seeded at least disk_pressure_seed_time are removed early,
+  # oldest first (per delete_policy), until it is back below. Set the seed
+  # time at or above your trackers' hit-and-run minimum. 0 disables.
+  disk_pressure_percent: 0
+  disk_pressure_seed_time: 48h
   # Per-indexer overrides of seed_time, for trackers with their own
   # minimum seed time. Names must match the Prowlarr indexer
   # (case-insensitive); anything not listed uses seed_time above, as do

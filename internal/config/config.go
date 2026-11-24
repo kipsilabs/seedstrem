@@ -226,6 +226,15 @@ type Cleanup struct {
 	// HistoryRetention is how long removed torrents stay in History,
 	// together with their saved .torrent files (so they can be re-added).
 	HistoryRetention time.Duration `yaml:"history_retention"`
+	// DiskPressurePercent: once the download disk's used share reaches this
+	// percentage, completed torrents that have seeded at least
+	// DiskPressureSeedTime may be removed before their normal seed time, in
+	// DeletePolicy order, until usage is back below it. 0 disables.
+	DiskPressurePercent int `yaml:"disk_pressure_percent"`
+	// DiskPressureSeedTime is the minimum seeding time before disk pressure
+	// may remove a torrent. Keep it at or above your trackers' hit-and-run
+	// minimum. Required when DiskPressurePercent is set.
+	DiskPressureSeedTime time.Duration `yaml:"disk_pressure_seed_time"`
 }
 
 // EffectiveSeedTime returns the seed time governing a torrent grabbed from
@@ -707,6 +716,20 @@ func (c Config) Validate() error {
 	}
 	if c.Cleanup.HistoryRetention <= 0 {
 		errs = append(errs, errors.New("cleanup.history_retention must be positive"))
+	}
+	if c.Cleanup.DiskPressurePercent < 0 || c.Cleanup.DiskPressurePercent > 100 {
+		errs = append(errs, fmt.Errorf("cleanup.disk_pressure_percent must be between 0 and 100 (0 disables), got %d", c.Cleanup.DiskPressurePercent))
+	}
+	if c.Cleanup.DiskPressureSeedTime < 0 {
+		errs = append(errs, errors.New("cleanup.disk_pressure_seed_time must not be negative"))
+	}
+	if c.Cleanup.DiskPressurePercent > 0 {
+		if c.Cleanup.DiskPressureSeedTime <= 0 {
+			errs = append(errs, errors.New("cleanup.disk_pressure_seed_time must be set when cleanup.disk_pressure_percent is (it protects the hit-and-run minimum)"))
+		}
+		if !c.Storage.DeleteFilesOnRemove {
+			errs = append(errs, errors.New("cleanup.disk_pressure_percent needs storage.delete_files_on_remove: removing torrents without their files frees no space"))
+		}
 	}
 	// Sorted so the error text is deterministic across map iterations.
 	seenIndexers := make(map[string]string, len(c.Cleanup.IndexerSeedTimes))

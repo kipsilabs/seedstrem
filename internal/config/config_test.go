@@ -415,3 +415,35 @@ func TestValidateQuickTimeout(t *testing.T) {
 		t.Error("a negative quick_timeout should be rejected")
 	}
 }
+
+func TestValidateDiskPressure(t *testing.T) {
+	base := Default()
+	if err := base.Validate(); err != nil {
+		t.Fatalf("default config invalid: %v", err)
+	}
+
+	on := Default()
+	on.Cleanup.DiskPressurePercent = 75
+	on.Cleanup.DiskPressureSeedTime = 48 * time.Hour
+	if err := on.Validate(); err != nil {
+		t.Errorf("75%% / 48h should be valid: %v", err)
+	}
+
+	noMin := on
+	noMin.Cleanup.DiskPressureSeedTime = 0
+	if err := noMin.Validate(); err == nil {
+		t.Error("disk pressure without a minimum seed time should be rejected")
+	}
+
+	noDelete := on
+	noDelete.Storage.DeleteFilesOnRemove = false
+	if err := noDelete.Validate(); err == nil {
+		t.Error("disk pressure without delete_files_on_remove should be rejected")
+	}
+
+	tooHigh := on
+	tooHigh.Cleanup.DiskPressurePercent = 101
+	if err := tooHigh.Validate(); err == nil {
+		t.Error("disk_pressure_percent above 100 should be rejected")
+	}
+}
