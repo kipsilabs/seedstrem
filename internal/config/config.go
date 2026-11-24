@@ -112,6 +112,12 @@ type Prowlarr struct {
 	// served from memory before Prowlarr is queried again for the same
 	// search. 0 disables caching (every request searches live).
 	SearchCacheTTL time.Duration `yaml:"search_cache_ttl"`
+	// QuickTimeout, when > 0, makes a fresh (uncached) discovery search
+	// progressive: the stream request waits at most this long and answers
+	// with the results resolved so far, while the search runs on in the
+	// background (up to SearchTimeout) and caches the complete set for the
+	// next request. 0 keeps the request waiting for the whole search.
+	QuickTimeout time.Duration `yaml:"quick_timeout"`
 }
 
 // Addon toggles which Stremio content types the addon serves.
@@ -695,6 +701,9 @@ func (c Config) Validate() error {
 	}
 	if c.Cleanup.SeedTime < 0 {
 		errs = append(errs, errors.New("cleanup.seed_time must not be negative (0 disables seed-time cleanup)"))
+	}
+	if c.Prowlarr.QuickTimeout < 0 {
+		errs = append(errs, errors.New("prowlarr.quick_timeout must not be negative (0 disables)"))
 	}
 	if c.Cleanup.HistoryRetention <= 0 {
 		errs = append(errs, errors.New("cleanup.history_retention must be positive"))

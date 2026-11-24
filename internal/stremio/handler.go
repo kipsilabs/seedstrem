@@ -40,6 +40,9 @@ type ProwlarrSettings struct {
 	// before Prowlarr is queried again for the same search. 0 disables
 	// caching (every request searches live).
 	SearchCacheTTL time.Duration
+	// QuickTimeout makes uncached discovery searches progressive; see
+	// config.Prowlarr.QuickTimeout. 0 disables it.
+	QuickTimeout time.Duration
 }
 
 // AddonSettings toggles which content types the addon serves.
@@ -85,6 +88,11 @@ type Handler struct {
 
 	torrentFiles *torrentFileCache
 	searchCache  *searchCache
+
+	// flights are the progressive discovery searches still running,
+	// keyed like searchCache; see progressiveSearch.
+	flightsMu sync.Mutex
+	flights   map[string]*discoveryFlight
 
 	// diskUsage reports (used, total) bytes for a local path. Injectable
 	// for tests; defaults to diskusage.Stat.

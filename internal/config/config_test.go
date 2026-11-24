@@ -403,3 +403,15 @@ func TestClientLabelFollowsDownloaderType(t *testing.T) {
 		t.Fatalf("ClientLabel() = %q, want %q", got, "deluge-label")
 	}
 }
+
+func TestValidateQuickTimeout(t *testing.T) {
+	c := Default()
+	c.Prowlarr.QuickTimeout = 5 * time.Second
+	if err := c.Validate(); err != nil {
+		t.Errorf("quick_timeout 5s should be valid: %v", err)
+	}
+	c.Prowlarr.QuickTimeout = -time.Second
+	if err := c.Validate(); err == nil {
+		t.Error("a negative quick_timeout should be rejected")
+	}
+}
